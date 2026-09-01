@@ -1,6 +1,12 @@
 spring:
   application:
     name: ag-ai-code-mother-backend
+  # mysql
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ag_ai_code_mother
+    username: root
+    password: 123456
 server:
   port: 8123
   servlet:
