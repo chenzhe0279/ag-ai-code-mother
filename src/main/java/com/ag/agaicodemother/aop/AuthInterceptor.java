@@ -1,4 +1,4 @@
-package com.ag.agaicodemother.acpect;
+package com.ag.agaicodemother.aop;
 
 import com.ag.agaicodemother.annotation.AuthCheck;
 import com.ag.agaicodemother.exception.BusinessException;
