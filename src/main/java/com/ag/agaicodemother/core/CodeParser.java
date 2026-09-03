@@ -11,6 +11,7 @@ import java.util.regex.Pattern;
  * 提供静态方法解析不同类型的代码内容
  *
  */
+@Deprecated
 public class CodeParser {
 
     // 定义用于匹配 HTML 代码块的正则表达式：

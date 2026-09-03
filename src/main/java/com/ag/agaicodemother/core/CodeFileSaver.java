@@ -11,6 +11,7 @@ import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 
+@Deprecated
 public class CodeFileSaver {
     //创建文件保存根目录
     private static final String FILE_SAVE_ROOT_DIR = System.getProperty("user.dir") + "/tmp/code_output";
