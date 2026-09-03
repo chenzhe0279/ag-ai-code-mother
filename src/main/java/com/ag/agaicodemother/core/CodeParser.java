@@ -40,6 +40,9 @@ public class CodeParser {
     // 忽略大小写，因此 JS、JavaScript 等写法都能匹配。
     private static final Pattern JS_CODE_PATTERN = Pattern.compile("```(?:js|javascript)\\s*\\n([\\s\\S]*?)```", Pattern.CASE_INSENSITIVE);
 
+    // 匹配 “描述：xxxx” 或 “description: xxxx”，直到行尾
+    private static final Pattern DESCRIPTION_PATTERN = Pattern.compile("(?:描述|description)\\s*[:：]\\s*([^\\n\\r]+)", Pattern.CASE_INSENSITIVE);
+
     /**
      * 解析 HTML 单文件代码
      */
@@ -49,6 +52,7 @@ public class CodeParser {
 
         // 调用 extractHtmlCode 方法，尝试从原始内容中提取 HTML 代码块
         String htmlCode = extractHtmlCode(codeContent);
+        String description = extractDescription(codeContent);
 
         // 判断提取到的 HTML 代码是否不为空，并且去除首尾空白后仍有内容
         if (htmlCode != null && !htmlCode.trim().isEmpty()) {
@@ -57,6 +61,13 @@ public class CodeParser {
         } else {
             // 如果没有找到符合格式的 HTML 代码块，则将原始内容去除首尾空白后作为 HTML 代码兜底返回
             result.setHtmlCode(codeContent.trim());
+        }
+
+        if (description != null && !description.trim().isEmpty()) {
+            result.setDescription(description.trim());
+        } else {
+            // 不要塞整段代码，回退到"暂无描述"或用户消息
+            result.setDescription("暂无描述");
         }
 
         // 返回包含 HTML 代码的解析结果
@@ -79,6 +90,8 @@ public class CodeParser {
         // 使用 JS 正则表达式从原始内容中提取 JavaScript 代码块
         String jsCode = extractCodeByPattern(codeContent, JS_CODE_PATTERN);
 
+        String description = extractDescription(codeContent);
+
         // 如果提取到的 HTML 代码不为空且去除首尾空白后有内容，则设置到结果对象中
         if (htmlCode != null && !htmlCode.trim().isEmpty()) {
             result.setHtmlCode(htmlCode.trim());
@@ -93,7 +106,12 @@ public class CodeParser {
         if (jsCode != null && !jsCode.trim().isEmpty()) {
             result.setJsCode(jsCode.trim());
         }
-
+        if (description != null && !description.trim().isEmpty()) {
+            result.setDescription(description.trim());
+        } else {
+            // 不要塞整段代码，回退到"暂无描述"或用户消息
+            result.setDescription("暂无描述");
+        }
         // 返回包含 HTML、CSS 和 JS 代码的多文件解析结果
         return result;
     }
@@ -136,6 +154,15 @@ public class CodeParser {
         }
 
         // 未找到匹配内容，返回 null
+        return null;
+    }
+    private static String extractDescription(String content) {
+        // 先去掉所有 ```...``` 代码块，避免在代码内部误匹配到 JS/HTML 行
+        String prose = content.replaceAll("```[\\s\\S]*?```", "");
+        Matcher matcher = DESCRIPTION_PATTERN.matcher(prose);
+        if (matcher.find()) {
+            return matcher.group(1).trim();
+        }
         return null;
     }
 }
