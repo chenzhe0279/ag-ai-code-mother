@@ -45,6 +45,10 @@ public class CodeFileSaver {
      * 写入单个文件
      */
     private static void writeToFile(String dirPath, String filename, String content) {
+        // 内容为空时跳过写入，避免 AI 未返回某个代码块时向 Hutool 传入 null 导致空指针异常
+        if (StrUtil.isBlank(content)) {
+            return;
+        }
         String filePath = dirPath + File.separator + filename;
         FileUtil.writeString(content,filePath, StandardCharsets.UTF_8);
     }
