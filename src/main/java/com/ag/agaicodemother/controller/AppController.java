@@ -2,6 +2,7 @@ package com.ag.agaicodemother.controller;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONUtil;
 import com.ag.agaicodemother.annotation.AuthCheck;
 import com.ag.agaicodemother.common.BaseResponse;
 import com.ag.agaicodemother.common.DeleteRequest;
@@ -23,20 +24,18 @@ import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.ag.agaicodemother.model.entity.App;
 import com.ag.agaicodemother.service.AppService;
-import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 应用 控制层。
@@ -52,6 +51,56 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+
+    /**
+     * 应用聊天生成代码（流式 SSE）
+     *
+     * @param appId   应用 ID
+     * @param message 用户消息
+     * @param request 请求对象
+     * @return 生成结果流
+     */
+    @GetMapping(value = "/chat/gen/code", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public Flux<ServerSentEvent<String>> chatToGenCode(@RequestParam Long appId,
+                                                       @RequestParam String message,
+                                                       HttpServletRequest request) {
+        // 参数校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID无效");
+        ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户消息不能为空");
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务生成代码（流式）
+        Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
+        // 返回一个响应式流 Flux<ServerSentEvent<String>>，用于 SSE 推送
+        return contentFlux
+                // 对上游发出的每个字符串片段进行处理
+                .map(chunk -> {
+                    // 将当前文本片段包装成一个 Map 结构，键为 "d"，值为当前片段，用于后续 JSON 序列化
+                    Map<String, String> wrapper = Map.of("d", chunk);
+                    // 使用 Hutool 的 JSONUtil 将 Map 转换为 JSON 字符串
+                    String jsonData = JSONUtil.toJsonStr(wrapper);
+                    // 构建一个 ServerSentEvent 对象，数据类型为 String
+                    return ServerSentEvent.<String>builder()
+                            // 设置事件的数据内容为刚才生成的 JSON 字符串
+                            .data(jsonData)
+                            // 完成构建
+                            .build();
+                })
+                // 在主内容流结束后，拼接一个结束事件
+                //Mono.just(value) 是创建 Mono 的工厂方法：把一个已经算好的值包装成一个只发一次、发完立即结束的 Mono
+                .concatWith(Mono.just(
+                        // 构建一个表示生成结束的 ServerSentEvent
+                        ServerSentEvent.<String>builder()
+                                // 设置事件名称为 "done"，客户端可监听此事件来判断流结束
+                                .event("done")
+                                // 设置数据为空字符串，表示无具体内容
+                                .data("")
+                                // 完成构建
+                                .build()
+                ));
+    }
+
     /**
      * 创建应用
      *

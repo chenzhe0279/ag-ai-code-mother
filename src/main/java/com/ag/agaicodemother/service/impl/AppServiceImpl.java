@@ -2,10 +2,13 @@ package com.ag.agaicodemother.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import com.ag.agaicodemother.core.AiCodeGeneratorFacade;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
+import com.ag.agaicodemother.exception.ThrowUtils;
 import com.ag.agaicodemother.model.dto.app.AppQueryRequest;
 import com.ag.agaicodemother.model.entity.User;
+import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import com.ag.agaicodemother.model.vo.AppVO;
 import com.ag.agaicodemother.model.vo.UserVO;
 import com.ag.agaicodemother.service.UserService;
@@ -16,6 +19,7 @@ import com.ag.agaicodemother.mapper.AppMapper;
 import com.ag.agaicodemother.service.AppService;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Flux;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +37,30 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
 
     @Resource
     private UserService userService;
+
+    @Resource
+    private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+    @Override
+    public Flux<String> chatToGenCode(Long appId, String message, User loginUser) {
+        //1.权限校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        ThrowUtils.throwIf(message == null || message.isEmpty(), ErrorCode.PARAMS_ERROR, "提示词信息不能为空");
+        //2.查询应用信息
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        //3.校验权限，仅本人可以和自己的应用对话
+        if(!app.getUserId().equals(loginUser.getId())){
+           throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限访问该应用");
+        }
+        //4.获取生成的代码枚举类型
+        String codeGenType = app.getCodeGenType();
+        CodeGenTypeEnum codeGenTypeEnum = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if(codeGenTypeEnum == null){
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "代码生成类型不支持");
+        }
+        //5调用AI大模型生成代码
+        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId);
+    }
 
     @Override
     public AppVO getAppVo(App app) {
@@ -98,5 +126,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
                     return appVo;
                 }).collect(Collectors.toList());
     }
+
 
 }
