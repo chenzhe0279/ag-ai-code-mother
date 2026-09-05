@@ -60,6 +60,17 @@ public class App implements Serializable {
     private String codeGenType;
 
     /**
+     * 当前代码版本号
+     * 职责说明：
+     * 1. 每次 AI 生成代码时通过行锁 +1 递增，充当"版本计数器"；
+     * 2. 部署、静态预览时读取该值定位"当前生效版本"目录 v{currentVersion}。
+     * 由于回退采用"复制式回退"（回退会复制出一个全新版本），
+     * 该值永远单调递增，不会与历史版本目录产生冲突。
+     */
+    @Column("currentVersion")
+    private Integer currentVersion;
+
+    /**
      * 部署标识
      */
     @Column("deployKey")

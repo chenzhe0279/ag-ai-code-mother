@@ -23,13 +23,18 @@ public class CodeFileSaverExecutor {
      * 执行代码保存
      *
      * @param codeResult  代码结果对象
-     * @param codeGenType 代码生成类型
-     * @return 保存的目录
+     * @param codeGenType 代码生成类型（HTML / MULTI_FILE）
+     * @param appId       应用 ID
+     * @param version     版本号（透传给模板方法，保存到 v{version} 目录）
+     * @return 保存的版本目录
      */
-    public static File executeSaver(Object codeResult, CodeGenTypeEnum codeGenType , Long appId) {
+    public static File executeSaver(Object codeResult, CodeGenTypeEnum codeGenType , Long appId , Integer version) {
         return switch (codeGenType) {
-            case HTML -> htmlCodeFileSaver.saveCode((HtmlCodeResult) codeResult , appId);
-            case MULTI_FILE -> multiFileCodeFileSaver.saveCode((MultiFileCodeResult) codeResult , appId);
+            // HTML 模式：保存单个 index.html 到 v{version} 目录
+            case HTML -> htmlCodeFileSaver.saveCode((HtmlCodeResult) codeResult , appId , version);
+            // 多文件模式：保存 index.html + style.css + script.js 到 v{version} 目录
+            case MULTI_FILE -> multiFileCodeFileSaver.saveCode((MultiFileCodeResult) codeResult , appId , version);
+            // 未知类型直接抛异常，防止错误数据落盘
             default -> throw new BusinessException(ErrorCode.SYSTEM_ERROR, "不支持的代码生成类型: " + codeGenType);
         };
     }

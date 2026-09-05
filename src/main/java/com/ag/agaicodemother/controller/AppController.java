@@ -16,6 +16,7 @@ import com.ag.agaicodemother.model.dto.app.*;
 import com.ag.agaicodemother.model.entity.User;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import com.ag.agaicodemother.model.vo.AppVO;
+import com.ag.agaicodemother.model.vo.AppVersionVO;
 import com.ag.agaicodemother.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
@@ -24,7 +25,6 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.beans.factory.annotation.Autowired;
 import com.ag.agaicodemother.model.entity.App;
 import com.ag.agaicodemother.service.AppService;
 import reactor.core.publisher.Flux;
@@ -48,7 +48,6 @@ public class AppController {
 
     @Resource
     private UserService userService;
-
 
     /**
      * 应用聊天生成代码（流式 SSE）
@@ -178,6 +177,43 @@ public class AppController {
     }
 
     /**
+     * 查看应用的历史版本号列表
+     *
+     * @param appId   应用 ID
+     * @param request 请求对象（用于获取登录用户）
+     * @return 版本列表（按版本号倒序，含当前版本标记）
+     */
+    @GetMapping("/version/list")
+    public BaseResponse<List<AppVersionVO>> listAppVersions(@RequestParam Long appId, HttpServletRequest request) {
+        // 参数校验：应用 ID 不能为空或非法
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 ID 不能为空");
+        // 获取当前登录用户（权限校验在服务层进行）
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务层获取版本列表并包装为统一响应
+        return ResultUtils.success(appService.listAppVersions(appId, loginUser));
+    }
+
+    /**
+     * 回退应用版本
+     * 回退 = 文件 + 版本号一起回退：目标版本的文件被复制为新版本，currentVersion 指向它，
+     * 已部署的应用还会自动同步部署目录，前端立即展示对应版本的页面
+     *
+     * @param appRollbackRequest 回退请求（appId + 目标版本号）
+     * @param request            请求对象（用于获取登录用户）
+     * @return 回退后产生的新版本号
+     */
+    @PostMapping("/version/rollback")
+    public BaseResponse<Integer> rollbackApp(@RequestBody AppRollbackRequest appRollbackRequest, HttpServletRequest request) {
+        // 参数校验：请求体不能为空
+        ThrowUtils.throwIf(appRollbackRequest == null, ErrorCode.PARAMS_ERROR);
+        // 获取当前登录用户（权限校验在服务层进行）
+        User loginUser = userService.getLoginUser(request);
+        // 调用服务层执行复制式回退，返回回退后产生的新版本号
+        Integer newVersion = appService.rollbackApp(appRollbackRequest.getAppId(), appRollbackRequest.getTargetVersion(), loginUser);
+        return ResultUtils.success(newVersion);
+    }
+
+    /**
      * 删除应用（用户只能删除自己的应用）
      *
      * @param deleteRequest 删除请求
@@ -205,7 +241,7 @@ public class AppController {
     /**
      * 根据 id 获取应用详情
      *
-     * @param id      应用 id
+     * @param id 应用 id
      * @return 应用详情
      */
     @GetMapping("/get/vo")

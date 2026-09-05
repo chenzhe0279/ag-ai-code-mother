@@ -26,11 +26,11 @@ public abstract class CodeFileSaverTemplate<T> {
      * @param result 代码结果对象
      * @return 保存的目录
      */
-    public final File saveCode(T result , Long appId) {
+    public final File saveCode(T result , Long appId, Integer version) {
         // 1. 验证输入
         validateInput(result);
         // 2. 构建唯一目录
-        String baseDirPath = buildUniqueDir(appId);
+        String baseDirPath = buildUniqueDir(appId, version);
         // 3. 保存文件（具体实现由子类提供）
         saveFiles(result, baseDirPath);
         // 4. 返回目录文件对象
@@ -54,13 +54,20 @@ public abstract class CodeFileSaverTemplate<T> {
      * @param appId 应用ID
      * @return 目录路径
      */
-    protected final String buildUniqueDir(Long appId) {
+    protected final String buildUniqueDir(Long appId, Integer version) {
         if(appId == null){
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"应用ID不能为空");
         }
+        // 校验版本号不能为空且必须为正数
+        if(version == null || version <= 0){
+            throw new BusinessException(ErrorCode.PARAMS_ERROR,"版本号不能为空");
+        }
         String codeType = getCodeType().getValue();
         String uniqueDirName = StrUtil.format("{}_{}", codeType, appId);
-        String dirPath = FILE_SAVE_ROOT_DIR + File.separator + uniqueDirName;
+        // 版本子目录名：v{version}，如 v1、v2、v3，每个版本互不覆盖
+        String versionDirName = StrUtil.format("{}{}", AppConstant.CODE_VERSION_DIR_PREFIX, version);
+        // 拼接完整路径：根目录/应用目录/版本目录
+        String dirPath = FILE_SAVE_ROOT_DIR + File.separator + uniqueDirName + File.separator + versionDirName;
         FileUtil.mkdir(dirPath);
         return dirPath;
     }
