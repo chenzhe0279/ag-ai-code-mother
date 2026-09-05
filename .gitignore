@@ -3,6 +3,7 @@ application-local.yml
 *.local
 
 tmp
+ag-ai-code-mother-web
 
 HELP.md
 target/
