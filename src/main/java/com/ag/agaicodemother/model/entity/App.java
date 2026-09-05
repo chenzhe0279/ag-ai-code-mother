@@ -60,12 +60,16 @@ public class App implements Serializable {
     private String codeGenType;
 
     /**
+     * 生成状态（生成状态功能新增）
+     * 取值：not_start（未开始）/ generating（生成中）/ succeeded（已成功）/ failed（失败）
+     * 状态流转由 chatToGenCode 驱动：发起生成置 generating，
+     * 流正常结束置 succeeded，流异常中断置 failed；前端轮询此字段展示实时进度
+     */
+    @Column("genStatus")
+    private String genStatus;
+
+    /**
      * 当前代码版本号
-     * 职责说明：
-     * 1. 每次 AI 生成代码时通过行锁 +1 递增，充当"版本计数器"；
-     * 2. 部署、静态预览时读取该值定位"当前生效版本"目录 v{currentVersion}。
-     * 由于回退采用"复制式回退"（回退会复制出一个全新版本），
-     * 该值永远单调递增，不会与历史版本目录产生冲突。
      */
     @Column("currentVersion")
     private Integer currentVersion;
@@ -83,9 +87,37 @@ public class App implements Serializable {
     private LocalDateTime deployedTime;
 
     /**
+     * 部署状态（部署控制功能新增）
+     * 取值：online（已上线）/ offline（已下线）
+     * 说明：该字段只对"部署过"的应用有意义（deployKey 非空）；
+     * 下线 = 删除部署目录文件 + 状态置 offline，deployKey 保留，重新部署 URL 不变
+     */
+    @Column("deployStatus")
+    private String deployStatus;
+
+    /**
      * 优先级
      */
     private Integer priority;
+
+    /**
+     * 可见范围
+     * 取值：public（公开）/ private（私有）
+     * 隐私保护规则：
+     * 1. 普通用户只能看到别人"公开"的应用；
+     * 2. 管理员可以查看所有应用；
+     * 3. 创建者本人始终可以看到自己的应用（无论公开还是私有）。
+     */
+    @Column("visibility")
+    private String visibility;
+
+    /**
+     * 应用标签（标签系统新增）
+     * 存储格式：逗号分隔的标签文本，如 "游戏,工具,效率"
+     * 为 null 或空串表示该应用没有设置标签
+     */
+    @Column("tags")
+    private String tags;
 
     /**
      * 创建用户id

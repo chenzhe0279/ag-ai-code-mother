@@ -1,5 +1,6 @@
 package com.ag.agaicodemother.ai;
 
+import com.ag.agaicodemother.ai.model.AppNameResult;
 import com.ag.agaicodemother.ai.model.HtmlCodeResult;
 import com.ag.agaicodemother.ai.model.MultiFileCodeResult;
 import dev.langchain4j.service.SystemMessage;
@@ -48,6 +49,6 @@ public interface AiCodeGeneratorService {
      * @return AI 生成的应用名称结果
      */
     @SystemMessage(fromResource = "prompt/app-name-system-prompt.txt")
-    String generateAppName(String userMessage);
+    AppNameResult generateAppName(String userMessage);
 
 }

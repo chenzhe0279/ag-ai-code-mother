@@ -15,7 +15,9 @@ import com.ag.agaicodemother.exception.ErrorCode;
 import com.ag.agaicodemother.exception.ThrowUtils;
 import com.ag.agaicodemother.model.dto.app.*;
 import com.ag.agaicodemother.model.entity.User;
+import com.ag.agaicodemother.model.enums.AppGenStatusEnum;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
+import com.ag.agaicodemother.model.enums.AppVisibilityEnum;
 import com.ag.agaicodemother.model.vo.AppVO;
 import com.ag.agaicodemother.model.vo.AppVersionVO;
 import com.ag.agaicodemother.service.UserService;
@@ -125,6 +127,24 @@ public class AppController {
         app.setAppName(appService.generateAppNameByAi(initPrompt));
         // 暂时设置为多文件生成
         app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
+        // ==================== 可见范围处理 ====================
+        String visibility = appAddRequest.getVisibility();
+        if (StrUtil.isBlank(visibility)) {
+            visibility = AppConstant.DEFAULT_APP_VISIBILITY;
+        }
+        ThrowUtils.throwIf(AppVisibilityEnum.getEnumByValue(visibility) == null,
+                ErrorCode.PARAMS_ERROR, "可见范围参数错误，仅支持 public / private");
+        // 将校验通过的可见范围写入待入库的应用对象
+        app.setVisibility(visibility);
+        // ==================== 生成状态初始化（新增） ====================
+        // 新应用尚未生成过代码，显式置为"未开始"
+        // （数据库有默认值，这里显式赋值是为了让代码意图更清晰，不依赖 DB 兜底）
+        app.setGenStatus(AppGenStatusEnum.NOT_START.getValue());
+        // ==================== 标签处理（新增） ====================
+        // 校验并规范化标签（null 直接通过，表示不带标签创建）
+        String tags = appService.validateAndNormalizeTags(appAddRequest.getTags());
+        // 将规范化的标签串写入待入库对象（可能为 null，数据库存 null）
+        app.setTags(tags);
         // 插入数据库
         boolean result = appService.save(app);
         ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR);
@@ -155,6 +175,19 @@ public class AppController {
         App app = new App();
         app.setId(id);
         app.setAppName(appUpdateRequest.getAppName());
+        // ==================== 可见范围更新 ====================
+        String visibility = appUpdateRequest.getVisibility();
+        if (StrUtil.isNotBlank(visibility)) {
+            ThrowUtils.throwIf(AppVisibilityEnum.getEnumByValue(visibility) == null,
+                    ErrorCode.PARAMS_ERROR, "可见范围参数错误，仅支持 public / private");
+            app.setVisibility(visibility);
+        }
+        // ==================== 标签更新（新增） ====================
+        // 用户传了标签才处理（没传表示本次不修改标签）
+        if (appUpdateRequest.getTags() != null) {
+            // 校验并规范化标签（空串表示"清空标签"）
+            app.setTags(appService.validateAndNormalizeTags(appUpdateRequest.getTags()));
+        }
         // 设置编辑时间
         app.setEditTime(LocalDateTime.now());
         boolean result = appService.updateById(app);
@@ -244,17 +277,35 @@ public class AppController {
     }
 
     /**
-     * 根据 id 获取应用详情
+     * 根据 id 获取应用详情（含可见范围校验，保护用户隐私）
+     * 权限规则：
+     * 1. 应用创建者本人：可以查看自己的应用（无论公开/私有）；
+     * 2. 管理员：可以查看所有应用；
+     * 3. 其他用户/游客：只能查看"公开"的应用，访问私有应用返回无权限错误。
      *
-     * @param id 应用 id
+     * @param id      应用 id
+     * @param request 请求对象（用于获取当前登录用户，未登录按游客处理）
      * @return 应用详情
      */
     @GetMapping("/get/vo")
-    public BaseResponse<AppVO> getAppVOById(long id) {
+    public BaseResponse<AppVO> getAppVOById(long id, HttpServletRequest request) {
+        // 参数校验：应用 id 必须大于 0
         ThrowUtils.throwIf(id <= 0, ErrorCode.PARAMS_ERROR);
-        // 查询数据库
+        // 查询数据库：根据 id 获取应用实体
         App app = appService.getById(id);
+        // 应用不存在时抛出"数据不存在"异常
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR);
+        // ==================== 可见范围权限校验 ====================
+        User loginUser = null;
+        try {
+            loginUser = userService.getLoginUser(request);
+        } catch (BusinessException e) {
+        }
+        boolean isOwner = loginUser != null && app.getUserId().equals(loginUser.getId());
+        boolean isAdmin = loginUser != null && UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole());
+        if (!isOwner && !isAdmin && AppConstant.APP_VISIBILITY_PRIVATE.equals(app.getVisibility())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "该应用为私有应用，无权查看");
+        }
         // 获取封装类（包含用户信息）
         return ResultUtils.success(appService.getAppVo(app));
     }
@@ -286,24 +337,47 @@ public class AppController {
     }
 
     /**
-     * 分页获取精选应用列表
+     * 分页获取精选应用列表（含可见范围过滤，保护用户隐私）
+     * 权限规则：
+     * 1. 管理员：查看所有精选应用（含私有的）；
+     * 2. 普通用户：只能看到"公开"的精选应用 + 自己创建的私有精选应用；
+     * 3. 游客（未登录）：只能看到"公开"的精选应用。
      *
      * @param appQueryRequest 查询请求
+     * @param request         请求对象（用于识别当前用户身份，未登录按游客处理）
      * @return 精选应用列表
      */
     @PostMapping("/good/list/page/vo")
-    public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest) {
+    public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest,
+                                                         HttpServletRequest request) {
+        // 参数校验：请求体不能为空
         ThrowUtils.throwIf(appQueryRequest == null, ErrorCode.PARAMS_ERROR);
-        // 限制每页最多 20 个
+        // 限制每页最多 20 个，防止一次性拉取过多数据
         long pageSize = appQueryRequest.getPageSize();
         ThrowUtils.throwIf(pageSize > 20, ErrorCode.PARAMS_ERROR, "每页最多查询 20 个应用");
+        // 取出页码（第几页）
         long pageNum = appQueryRequest.getPageNum();
-        // 只查询精选的应用
+        // 只查询精选的应用：把查询条件中的优先级固定为精选优先级 99
         appQueryRequest.setPriority(AppConstant.GOOD_APP_PRIORITY);
+        // 根据查询请求构造基础查询条件（名称模糊、类型、优先级等）
         QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
+        // ==================== 可见范围权限过滤 ====================
+        User loginUser = null;
+        try {
+            loginUser = userService.getLoginUser(request);
+        } catch (BusinessException e) {
+        }
+        boolean isAdmin = loginUser != null && UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole());
+        if (!isAdmin) {
+            if (loginUser != null) {
+                queryWrapper.eq("userId", loginUser.getId());
+            } else {
+                queryWrapper.eq("visibility", AppConstant.APP_VISIBILITY_PUBLIC);
+            }
+        }
         // 分页查询
         Page<App> appPage = appService.page(Page.of(pageNum, pageSize), queryWrapper);
-        // 数据封装
+        // 数据封装：把应用实体列表转换为应用 VO 列表（附带创建者信息）
         Page<AppVO> appVOPage = new Page<>(pageNum, pageSize, appPage.getTotalRow());
         List<AppVO> appVOList = appService.getAppVoList(appPage.getRecords());
         appVOPage.setRecords(appVOList);
@@ -348,6 +422,12 @@ public class AppController {
         ThrowUtils.throwIf(oldApp == null, ErrorCode.NOT_FOUND_ERROR);
         App app = new App();
         BeanUtil.copyProperties(appAdminUpdateRequest, app);
+        // ==================== 可见范围校验 ====================
+        String visibility = appAdminUpdateRequest.getVisibility();
+        if (StrUtil.isNotBlank(visibility)) {
+            ThrowUtils.throwIf(AppVisibilityEnum.getEnumByValue(visibility) == null,
+                    ErrorCode.PARAMS_ERROR, "可见范围参数错误，仅支持 public / private");
+        }
         // 设置编辑时间
         app.setEditTime(LocalDateTime.now());
         boolean result = appService.updateById(app);
@@ -393,4 +473,106 @@ public class AppController {
         return ResultUtils.success(appService.getAppVo(app));
     }
 
+    /**
+     * 置顶应用（应用置顶功能新增）
+     * 实现方式：把应用的优先级设为 999（PINNED_APP_PRIORITY），
+     * 列表按优先级倒序排列时，置顶应用自然排在最前面
+     * 权限：仅应用创建者本人或管理员可置顶
+     *
+     * @param appId   要置顶的应用 id
+     * @param request 请求对象（用于获取登录用户）
+     * @return 置顶结果
+     */
+    @PostMapping("/pin")
+    public BaseResponse<Boolean> pinApp(@RequestParam Long appId, HttpServletRequest request) {
+        // 参数校验：应用 id 必须非空且合法
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 查询目标应用（getById 自动过滤已逻辑删除的数据）
+        App app = appService.getById(appId);
+        // 应用不存在时抛出"数据不存在"异常
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR);
+        // 权限校验：仅创建者本人或管理员可以置顶
+        if (!app.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "仅应用创建者或管理员可以置顶应用");
+        }
+        // 构造待更新对象：只设置 id 和新优先级，其余字段为 null 不会被更新
+        App updateApp = new App();
+        // 定位要更新的行
+        updateApp.setId(appId);
+        // 核心动作：优先级设为 999，排序时排到最前
+        updateApp.setPriority(AppConstant.PINNED_APP_PRIORITY);
+        // 记录本次编辑时间
+        updateApp.setEditTime(LocalDateTime.now());
+        // 执行更新（MyBatis-Flex 默认忽略 null 字段，只更新 priority 和 editTime 两列）
+        boolean result = appService.updateById(updateApp);
+        // 更新失败（影响行数为 0）抛操作异常
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "置顶失败");
+        // 返回成功
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 取消置顶（应用置顶功能新增）
+     * 实现方式：把优先级恢复为默认值 0（DEFAULT_APP_PRIORITY）
+     * 权限：仅应用创建者本人或管理员可操作
+     * 说明：如果该应用同时是精选（99），取消置顶后会被重置为 0，
+     * 需要保留精选身份的话由管理员重新在管理后台设置优先级即可
+     *
+     * @param appId   要取消置顶的应用 id
+     * @param request 请求对象（用于获取登录用户）
+     * @return 取消置顶结果
+     */
+    @PostMapping("/unpin")
+    public BaseResponse<Boolean> unpinApp(@RequestParam Long appId, HttpServletRequest request) {
+        // 参数校验：应用 id 必须非空且合法
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 查询目标应用
+        App app = appService.getById(appId);
+        // 应用不存在时抛出"数据不存在"异常
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR);
+        // 权限校验：仅创建者本人或管理员可以取消置顶
+        if (!app.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "仅应用创建者或管理员可以取消置顶");
+        }
+        // 构造待更新对象
+        App updateApp = new App();
+        // 定位要更新的行
+        updateApp.setId(appId);
+        // 把优先级恢复为默认值 0，应用回到普通排序位置
+        updateApp.setPriority(AppConstant.DEFAULT_APP_PRIORITY);
+        // 记录本次编辑时间
+        updateApp.setEditTime(LocalDateTime.now());
+        // 执行更新
+        boolean result = appService.updateById(updateApp);
+        // 更新失败抛操作异常
+        ThrowUtils.throwIf(!result, ErrorCode.OPERATION_ERROR, "取消置顶失败");
+        // 返回成功
+        return ResultUtils.success(true);
+    }
+
+    /**
+     * 下线应用（部署控制功能新增）
+     * 下线 = 删除部署目录文件 + 部署状态置为 offline，部署 URL 立即失效（404）；
+     * deployKey 保留，之后重新调用部署接口可恢复上线且 URL 不变。
+     * 权限：仅应用创建者本人或管理员可下线
+     *
+     * @param appId   要下线的应用 id
+     * @param request 请求对象（用于获取登录用户）
+     * @return 下线结果
+     */
+    @PostMapping("/undeploy")
+    public BaseResponse<Boolean> undeployApp(@RequestParam Long appId, HttpServletRequest request) {
+        // 参数校验：应用 id 必须非空且合法
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        // 获取当前登录用户
+        User loginUser = userService.getLoginUser(request);
+        // 委托服务层执行下线（内部完成权限校验、目录删除、状态更新）
+        appService.undeployApp(appId, loginUser);
+        // 包装为统一成功响应返回
+        return ResultUtils.success(true);
+    }
 }

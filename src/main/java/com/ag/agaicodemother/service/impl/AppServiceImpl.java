@@ -14,6 +14,7 @@ import com.ag.agaicodemother.exception.ErrorCode;
 import com.ag.agaicodemother.exception.ThrowUtils;
 import com.ag.agaicodemother.model.dto.app.AppQueryRequest;
 import com.ag.agaicodemother.model.entity.User;
+import com.ag.agaicodemother.model.enums.AppGenStatusEnum;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import com.ag.agaicodemother.model.vo.AppVO;
 import com.ag.agaicodemother.model.vo.AppVersionVO;
@@ -83,6 +84,15 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         //   行锁串行化并发请求 → 扫描磁盘最大版本目录 +1 → 锁内创建目录 → 写回 currentVersion，
         //   保证并发安全，且指针式回退后再次生成也不会覆盖历史版本
         Integer nextVersion = reserveNextVersion(appId);
+        // 在发起 AI 生成前先把状态写入数据库，前端从这一刻起轮询到的是"生成中"
+        App updateApp = new App();
+        // 定位要更新的行
+        updateApp.setId(appId);
+        // 设置新的生成状态
+        updateApp.setGenStatus(AppGenStatusEnum.GENERATING.getValue());
+        // 执行更新
+        boolean update = this.updateById(updateApp);
+        ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "更新应用生成状态失败");
         //6调用AI大模型生成代码
         return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId ,nextVersion);
     }
@@ -96,7 +106,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         App app = this.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
         //3.验证用户是否有权限部署该应用，仅本人可以部署
-        // 3. 验证用户是否有权限部署该应用，仅本人可以部署
         if (!app.getUserId().equals(loginUser.getId())) {
             throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限部署该应用");
         }
@@ -126,15 +135,64 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：" + e.getMessage());
         }
-        // 8. 更新应用的 deployKey 和部署时间
+        // 8. 更新应用的 deployKey、部署时间和部署状态
         App updateApp = new App();
         updateApp.setId(appId);
         updateApp.setDeployKey(deployKey);
         updateApp.setDeployedTime(LocalDateTime.now());
+        // 部署控制功能新增：部署成功即视为"已上线"（下线后重新部署也走这里恢复上线）
+        updateApp.setDeployStatus(AppConstant.APP_DEPLOY_STATUS_ONLINE);
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
         // 9. 返回可访问的 URL
         return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
+    }
+
+    /**
+     * 下线应用（部署控制功能新增）
+     * 核心动作：
+     * 1. 删除部署目录 tmp/code_deploy/{deployKey}/，外部访问部署 URL 立即变为 404；
+     * 2. 数据库把部署状态置为 offline；
+     * 3. deployKey 保留不删——重新部署时复用同一个 key，URL 保持稳定
+     *    （与"固定 deployKey 确保 URL 稳定性"的设计决策保持一致）。
+     *
+     * @param appId     应用 ID
+     * @param loginUser 登录用户（权限校验：仅本人或管理员可下线）
+     */
+    @Override
+    public void undeployApp(Long appId, User loginUser) {
+        // 1. 参数校验：应用 id 合法、用户已登录
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.PARAMS_ERROR, "用户未登录");
+        // 2. 查询应用信息
+        App app = this.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 权限校验：仅创建者本人或管理员可以下线应用
+        if (!app.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "仅应用创建者或管理员可以下线应用");
+        }
+        // 4. 前置校验：应用必须部署过（deployKey 非空），没部署过就谈不上"下线"
+        ThrowUtils.throwIf(StrUtil.isBlank(app.getDeployKey()), ErrorCode.PARAMS_ERROR, "该应用尚未部署，无需下线");
+        // 5. 删除部署目录：tmp/code_deploy/{deployKey}/
+        //    目录删除后，静态资源接口立即无法命中文件，外部访问返回 404
+        String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + app.getDeployKey();
+        try {
+            // FileUtil.del 会递归删除目录及其下所有文件；目录不存在时静默返回（幂等，重复下线不报错）
+            FileUtil.del(deployDirPath);
+        } catch (Exception e) {
+            // 文件删除失败属于系统异常，抛出后由全局异常处理器返回错误信息
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "下线失败：" + e.getMessage());
+        }
+        // 6. 更新数据库：部署状态置为 offline（只更新这一列，其余字段为 null 被忽略）
+        App updateApp = new App();
+        // 定位要更新的行
+        updateApp.setId(appId);
+        // 状态置为"已下线"
+        updateApp.setDeployStatus(AppConstant.APP_DEPLOY_STATUS_OFFLINE);
+        // 执行更新
+        boolean updateResult = this.updateById(updateApp);
+        // 更新失败抛操作异常（此时目录已删但状态还是 online，出现不一致，提示用户重试即可修复）
+        ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新部署状态失败");
     }
 
     @Override
@@ -167,18 +225,52 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         String deployKey = appQueryRequest.getDeployKey();
         Integer priority = appQueryRequest.getPriority();
         Long userId = appQueryRequest.getUserId();
+        // 取出可见范围查询条件（可为 null，null 时 MyBatis-Flex 会自动忽略该条件）
+        String visibility = appQueryRequest.getVisibility();
+        // 取出标签筛选条件（可为 null，null 时 like 条件自动忽略）
+        String tagName = appQueryRequest.getTagName();
+        // 取出部署状态筛选条件（新增，可为 null，null 时自动忽略）
+        String deployStatus = appQueryRequest.getDeployStatus();
+        // 取出生成状态筛选条件（新增，可为 null，null 时自动忽略）
+        String genStatus = appQueryRequest.getGenStatus();
         String sortField = appQueryRequest.getSortField();
         String sortOrder = appQueryRequest.getSortOrder();
-        return QueryWrapper.create()
+        // 先构建基础查询条件（不含优先级和排序，后面单独处理）
+        QueryWrapper queryWrapper = QueryWrapper.create()
                 .eq("id", id)
                 .like("appName", appName)
                 .like("cover", cover)
                 .like("initPrompt", initPrompt)
                 .eq("codeGenType", codeGenType)
                 .eq("deployKey", deployKey)
-                .eq("priority", priority)
-                .eq("userId", userId)
-                .orderBy(sortField, "ascend".equals(sortOrder));
+                // 按可见范围精确过滤：仅当前端传了 visibility 时该条件才生效
+                .eq("visibility", visibility)
+                // 按标签筛选：tags 字段做 LIKE 模糊匹配
+                .like("tags", tagName)
+                // 按部署状态精确过滤（新增）：online/offline
+                .eq("deployStatus", deployStatus)
+                // 按生成状态精确过滤（新增）：not_start/generating/succeeded/failed
+                .eq("genStatus", genStatus)
+                .eq("userId", userId);
+        // ==================== 优先级过滤（置顶功能改造） ====================
+        // 精选列表场景（priority >= 99）：必须用范围查询 >= 99，
+        // 否则置顶应用（999）会被 eq(99) 精确匹配排除，从精选列表中消失；
+        // 普通场景（priority < 99 或未传）：保持原有的精确匹配逻辑不变
+        if (priority != null && priority >= AppConstant.MIN_GOOD_APP_PRIORITY) {
+            // 范围过滤：置顶(999) 和精选(99) 的应用都能被查出来
+            queryWrapper.ge("priority", priority);
+        } else {
+            // 精确匹配普通优先级（null 时 MyBatis-Flex 自动忽略该条件）
+            queryWrapper.eq("priority", priority);
+        }
+        // ==================== 排序规则（置顶功能改造） ====================
+        // 第一排序键：优先级倒序——置顶(999) > 精选(99) > 普通(0)，置顶应用永远排在最前
+        queryWrapper.orderBy("priority", false);
+        // 第二排序键：前端指定的排序字段（如 createTime、id），priority 相同时按它排；
+        // sortField 为 null 时 MyBatis-Flex 自动忽略该条件
+        queryWrapper.orderBy(sortField, "ascend".equals(sortOrder));
+        // 返回构建完成的查询条件
+        return queryWrapper;
     }
 
     @Override
@@ -281,7 +373,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         String fallbackName = initPrompt.substring(0, Math.min(initPrompt.length(), 12));
         try {
             // 调用 AI 服务生成名称
-            String appNameResult = aiCodeGeneratorService.generateAppName(initPrompt);
+            String appNameResult = aiCodeGeneratorService.generateAppName(initPrompt).getName();
             // 清洗 AI 输出：去引号、去空白、只取第一行
             String aiName = appNameResult == null ? null : cleanAiAppName(appNameResult);
             // 输出为空则使用兜底名称
@@ -313,6 +405,54 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         // 去掉可能包裹的引号（英文/中文双引号、单引号）
         name = name.replaceAll("[\"“”'‘’]", "");
         return StrUtil.trim(name);
+    }
+
+
+    /**
+     * 校验并规范化标签串（标签系统新增，私有辅助方法）
+     * 规则：
+     * 1. 入参为 null 时返回 null（表示"不设置/不修改标签"）；
+     * 2. 空白串视为"清空标签"，返回 null（数据库存 null）；
+     * 3. 按逗号切分后：去掉每段首尾空格、过滤空项、去重；
+     * 4. 单个标签长度不超过上限，标签总数不超过上限；
+     * 5. 返回重新用逗号拼接的规范化标签串，如 "游戏, 工具" → "游戏,工具"。
+     *
+     * @param tags 前端传入的原始标签串
+     * @return 规范化后的标签串；无有效标签时返回 null
+     */
+    @Override
+    public String validateAndNormalizeTags(String tags) {
+        // null 表示前端没传，直接返回 null（创建时不设置、更新时不修改）
+        if (tags == null) {
+            return null;
+        }
+        // 按英文逗号切分成标签数组（也兼容中文逗号，先统一替换）
+        String[] parts = tags.replace("，", ",").split(",");
+        // 收集清洗后的有效标签（LinkedHashSet 保持顺序且自动去重）
+        Set<String> validTags = new LinkedHashSet<>();
+        // 遍历每个切分出来的原始标签片段
+        for (String part : parts) {
+            // 去掉首尾空格
+            String tag = part.trim();
+            // 空白片段跳过（如 "a,,b" 中间的空项）
+            if (StrUtil.isBlank(tag)) {
+                continue;
+            }
+            // 校验单个标签长度，超长直接报参数错误
+            ThrowUtils.throwIf(tag.length() > AppConstant.MAX_TAG_NAME_LENGTH,
+                    ErrorCode.PARAMS_ERROR, "单个标签长度不能超过 " + AppConstant.MAX_TAG_NAME_LENGTH + " 个字符");
+            // 加入结果集合（Set 自动去重）
+            validTags.add(tag);
+        }
+        // 清洗后没有有效标签：视为清空标签，返回 null
+        if (validTags.isEmpty()) {
+            return null;
+        }
+        // 校验标签总数不能超过上限
+        ThrowUtils.throwIf(validTags.size() > AppConstant.MAX_APP_TAG_COUNT,
+                ErrorCode.PARAMS_ERROR, "每个应用最多设置 " + AppConstant.MAX_APP_TAG_COUNT + " 个标签");
+        // 用英文逗号重新拼接为规范化标签串返回，保证入库格式统一
+        return String.join(",", validTags);
     }
     // ==================== 版本管理内部私有逻辑（对外不可见） ====================
 
@@ -463,7 +603,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         //    部署目录 tmp/code_deploy/{deployKey}/ 里还是旧版本的文件快照，
         //    必须把目标版本文件重新发布过去，前端"查看作品"打开的就是回退后的页面
         //    （发布失败抛异常 → 外层事务回滚第 2 步的 DB 更新，保持一致性）
-        if (StrUtil.isNotBlank(app.getDeployKey())) {
+        //    部署控制功能改造：仅当应用处于"已上线"状态才同步部署目录，
+        //    已下线（offline）的应用回退版本只更新版本号，不悄悄把文件重新发布到线上
+        boolean isOnline = AppConstant.APP_DEPLOY_STATUS_ONLINE.equals(app.getDeployStatus());
+        if (StrUtil.isNotBlank(app.getDeployKey()) && isOnline) {
             reDeployToDeployDir(app.getDeployKey(), targetDir);
         }
         // 返回回退后的版本号（即目标版本号，前端可直接展示）
@@ -514,5 +657,67 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
      */
     private File getVersionDir(App app, Integer version) {
         return new File(getVersionRootDir(app) + File.separator + AppConstant.CODE_VERSION_DIR_PREFIX + version);
+    }
+
+    /**
+     * 删除应用并关联清理数据（数据清理功能新增）
+     * 处理顺序（先文件后记录）：
+     * 1. 校验应用存在、校验操作权限（仅创建者本人或管理员）；
+     * 2. 删除版本目录：AI 生成的所有历史版本代码一次性清掉（v1、v2... 全在应用根目录下）；
+     * 3. 删除部署目录：已部署的应用还要清掉线上文件快照，外部 URL 立即 404；
+     * 4. 逻辑删除数据库记录。
+     * 文件删除失败时只记日志不中断流程：磁盘残留只是空间浪费，
+     * 数据库记录的删除才是"删除应用"的主语义，不应被文件系统故障阻塞
+     *
+     * @param appId     应用 ID
+     * @param loginUser 登录用户
+     * @return 删除结果
+     */
+    @Override
+    public boolean deleteApp(Long appId, User loginUser) {
+        // 1. 参数校验：应用 id 合法、用户已登录
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.PARAMS_ERROR, "用户未登录");
+        // 2. 查询应用信息（getById 自动过滤已逻辑删除的数据）
+        App app = this.getById(appId);
+        // 应用不存在时抛出"数据不存在"异常
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 权限校验：仅创建者本人或管理员可以删除应用
+        if (!app.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "仅应用创建者或管理员可以删除应用");
+        }
+        // 4. 清理版本目录：tmp/code_output/{codeType}_{appId}/
+        //    复用已有的 getVersionRootDir 方法拼出应用根目录（包含全部 v{n} 版本子目录）
+        cleanDirQuietly(getVersionRootDir(app), "版本目录");
+        // 5. 清理部署目录：tmp/code_deploy/{deployKey}/（仅部署过的应用才有）
+        if (StrUtil.isNotBlank(app.getDeployKey())) {
+            // deployKey 非空说明部署过，拼接部署目录路径并清理
+            String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + app.getDeployKey();
+            // 静默清理：失败只记日志，不阻塞删除主流程
+            cleanDirQuietly(deployDirPath, "部署目录");
+        }
+        // 6. 逻辑删除数据库记录（isDelete 置 1，与项目删除惯例一致）
+        return this.removeById(appId);
+    }
+
+    /**
+     * 静默清理磁盘目录（数据清理功能新增，私有辅助方法）
+     * "静默"的含义：目录不存在或删除失败都不抛异常，只记日志——
+     * 磁盘清理是尽力而为的附属操作，失败不应影响"删除应用"的主流程
+     *
+     * @param dirPath 要删除的目录路径
+     * @param dirLabel 目录用途标签（仅用于日志区分，如"版本目录"/"部署目录"）
+     */
+    private void cleanDirQuietly(String dirPath, String dirLabel) {
+        try {
+            // FileUtil.del 递归删除目录及其下所有文件；目录不存在时静默返回（天然幂等，重复删除不报错）
+            FileUtil.del(dirPath);
+            // 清理成功记录 info 日志，便于审计追溯
+            log.info("应用删除，已清理{}: {}", dirLabel, dirPath);
+        } catch (Exception e) {
+            // 清理失败只记 warn 日志：残留文件是空间浪费但无害，主删除流程继续执行
+            log.warn("应用删除，清理{}失败（残留垃圾文件，不影响删除结果）: {}，原因: {}",
+                    dirLabel, dirPath, e.getMessage());
+        }
     }
 }

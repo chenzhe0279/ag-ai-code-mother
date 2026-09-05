@@ -27,5 +27,11 @@ public class AppAdminUpdateRequest implements Serializable {
      */
     private Integer priority;
 
+    /**
+     * 可见范围：public（公开）/ private（私有）
+     * 管理员也可以修改应用的可见范围；不传表示不修改
+     */
+    private String visibility;
+
     private static final long serialVersionUID = 1L;
 }

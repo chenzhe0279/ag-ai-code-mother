@@ -47,8 +47,12 @@ create table if not exists app
     currentVersion int      default 1               not null comment '当前代码版本号',
     deployKey    varchar(64)                        null comment '部署标识',
     deployedTime datetime                           null comment '部署时间',
+    deployStatus VARCHAR(32) NOT NULL DEFAULT 'online' COMMENT '部署状态：online已上线/offline已下线',
     priority     int      default 0                 not null comment '优先级',
+    visibility   varchar(32) default 'public'       not null comment '可见范围：public公开/private私有',
+    tags         varchar(256)                       null comment '应用标签，逗号分隔',
     userId       bigint                             not null comment '创建用户id',
+    genStatus VARCHAR(32) NOT NULL DEFAULT 'not_start' COMMENT '生成状态：not_start未开始/generating生成中/succeeded已成功/failed失败',
     editTime     datetime default CURRENT_TIMESTAMP not null comment '编辑时间',
     createTime   datetime default CURRENT_TIMESTAMP not null comment '创建时间',
     updateTime   datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
@@ -64,3 +68,15 @@ create table if not exists app
 -- 旧版平铺目录会在首次访问时自动挪入 v1/ 子目录，无需手工处理文件
 ALTER TABLE app
     ADD COLUMN currentVersion INT NOT NULL DEFAULT 1 COMMENT '当前代码版本号' AFTER codeGenType;
+
+ALTER TABLE app
+    ADD COLUMN visibility VARCHAR(32) NOT NULL DEFAULT 'public' COMMENT '可见范围：public公开/private私有' AFTER priority;
+
+ALTER TABLE app
+    ADD COLUMN tags VARCHAR(256) NULL COMMENT '应用标签，逗号分隔' AFTER visibility;
+
+ALTER TABLE app
+    ADD COLUMN deployStatus VARCHAR(32) NOT NULL DEFAULT 'online' COMMENT '部署状态：online已上线/offline已下线' AFTER deployedTime;
+
+ALTER TABLE app
+    ADD COLUMN genStatus VARCHAR(32) NOT NULL DEFAULT 'not_start' COMMENT '生成状态：not_start未开始/generating生成中/succeeded已成功/failed失败' AFTER codeGenType;

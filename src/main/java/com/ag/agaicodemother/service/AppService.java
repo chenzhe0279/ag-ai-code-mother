@@ -38,6 +38,16 @@ public interface AppService extends IService<App> {
     String deployApp(Long appId, User loginUser);
 
     /**
+     * 下线应用（部署控制功能新增）
+     * 下线 = 删除部署目录文件 + 部署状态置为 offline；
+     * deployKey 保留在数据库中，重新部署后 URL 保持不变
+     *
+     * @param appId     应用ID
+     * @param loginUser 登录用户（权限校验：仅本人或管理员可下线）
+     */
+    void undeployApp(Long appId, User loginUser);
+
+    /**
      * 查看应用的历史版本号列表（版本化功能一）
      *
      * @param appId     应用ID
@@ -88,4 +98,24 @@ public interface AppService extends IService<App> {
      * @return
      */
     String generateAppNameByAi(String initPrompt);
+
+    /**
+     * 验证并规范标签格式
+     * @param tags
+     * @return
+     */
+    String validateAndNormalizeTags(String tags);
+
+    /**
+     * 删除应用并关联清理数据（数据清理功能新增）
+     * 删除 = 逻辑删除数据库记录 + 删除磁盘上的版本目录和部署目录：
+     * 1. 版本目录 tmp/code_output/{codeType}_{appId}/：AI 生成的全部历史版本代码；
+     * 2. 部署目录 tmp/code_deploy/{deployKey}/：已部署应用的线上文件快照（未部署过则跳过）
+     *
+     * @param appId     应用 ID
+     * @param loginUser 登录用户（权限校验：仅本人或管理员可删除）
+     * @return 删除结果
+     */
+    boolean deleteApp(Long appId, User loginUser);
+
 }
