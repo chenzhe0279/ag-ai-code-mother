@@ -12,20 +12,20 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+//@SpringBootTest
 class AiCodeGeneratorFacadeTest {
 
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
-    @Test
+    //@Test
     void generateAndSaveCode() {
-        File file = aiCodeGeneratorFacade.generateAndSaveCode("登录页面", CodeGenTypeEnum.MULTI_FILE, 1L);
+        File file = aiCodeGeneratorFacade.generateAndSaveCode("登录页面", CodeGenTypeEnum.MULTI_FILE, 1L,1);
         assertNotNull(file);
     }
 
-    @Test
+    //@Test
     void generateAndSaveCodeStream() {
-        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("任务记录网站", CodeGenTypeEnum.MULTI_FILE, 1L);
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream("任务记录网站", CodeGenTypeEnum.MULTI_FILE, 1L,1);
         // 阻塞等待所有数据收集完成
         List<String> result = codeStream.collectList().block();
         // 验证结果

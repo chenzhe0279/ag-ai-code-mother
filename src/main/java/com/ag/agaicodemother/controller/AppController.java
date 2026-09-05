@@ -3,6 +3,7 @@ package com.ag.agaicodemother.controller;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.ag.agaicodemother.ai.AiCodeGeneratorService;
 import com.ag.agaicodemother.annotation.AuthCheck;
 import com.ag.agaicodemother.common.BaseResponse;
 import com.ag.agaicodemother.common.DeleteRequest;
@@ -22,6 +23,7 @@ import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.*;
@@ -41,6 +43,7 @@ import java.util.Map;
  */
 @RestController
 @RequestMapping("/app")
+@Slf4j
 public class AppController {
 
     @Resource
@@ -48,6 +51,8 @@ public class AppController {
 
     @Resource
     private UserService userService;
+
+
 
     /**
      * 应用聊天生成代码（流式 SSE）
@@ -116,8 +121,8 @@ public class AppController {
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
         app.setUserId(loginUser.getId());
-        // 应用名称暂时为 initPrompt 前 12 位
-        app.setAppName(initPrompt.substring(0, Math.min(initPrompt.length(), 12)));
+        // 调用大模型根据初始描述自动生成应用名称（失败时兜底为 initPrompt 前 12 位）
+        app.setAppName(appService.generateAppNameByAi(initPrompt));
         // 暂时设置为多文件生成
         app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
         // 插入数据库

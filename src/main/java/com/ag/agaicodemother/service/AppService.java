@@ -82,4 +82,10 @@ public interface AppService extends IService<App> {
      */
     List<AppVO> getAppVoList(List<App> appList);
 
+    /**
+     * 调用AI工具生成应用名称
+     * @param initPrompt
+     * @return
+     */
+    String generateAppNameByAi(String initPrompt);
 }

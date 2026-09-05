@@ -5,6 +5,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.ag.agaicodemother.ai.AiCodeGeneratorService;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.constant.UserConstant;
 import com.ag.agaicodemother.core.AiCodeGeneratorFacade;
@@ -24,14 +25,13 @@ import com.ag.agaicodemother.model.entity.App;
 import com.ag.agaicodemother.mapper.AppMapper;
 import com.ag.agaicodemother.service.AppService;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 
 import java.io.File;
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,6 +43,7 @@ import java.util.stream.Collectors;
  * @author <a href="https://github.com/chenzhe0279">陈爱国</a>
  */
 @Service
+@Slf4j
 public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppService{
 
     @Resource
@@ -50,6 +51,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
 
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
+
+    @Resource
+    private AiCodeGeneratorService aiCodeGeneratorService;
 
     /** 预编译正则：匹配版本目录名 v1、v2、v10...（v 后必须全为数字，防止误匹配其他目录） */
     private static final Pattern VERSION_DIR_PATTERN = Pattern.compile("^v(\\d+)$");
@@ -259,6 +263,57 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         return doRollback(app, targetVersion);
     }
 
+    /**
+     * AI 生成应用名称的最大长度（超出部分截断，避免名称过长）
+     */
+    private static final int AI_APP_NAME_MAX_LENGTH = 20;
+
+    /**
+     * 调用大模型根据应用初始描述自动生成应用名称
+     * 生成失败或结果为空时，兜底为 initPrompt 前 12 位，保证创建流程不受 AI 波动影响
+     *
+     * @param initPrompt 应用初始描述
+     * @return 应用名称
+     */
+    @Override
+    public String generateAppNameByAi(String initPrompt) {
+        // 兜底名称：沿用旧逻辑取 initPrompt 前 12 位
+        String fallbackName = initPrompt.substring(0, Math.min(initPrompt.length(), 12));
+        try {
+            // 调用 AI 服务生成名称
+            String appNameResult = aiCodeGeneratorService.generateAppName(initPrompt);
+            // 清洗 AI 输出：去引号、去空白、只取第一行
+            String aiName = appNameResult == null ? null : cleanAiAppName(appNameResult);
+            // 输出为空则使用兜底名称
+            if (StrUtil.isBlank(aiName)) {
+                return fallbackName;
+            }
+            // 超长截断
+            return aiName.length() > AI_APP_NAME_MAX_LENGTH
+                    ? aiName.substring(0, AI_APP_NAME_MAX_LENGTH) : aiName;
+        } catch (Exception e) {
+            // AI 调用失败不阻塞创建流程，记录日志后使用兜底名称
+            log.warn("AI 生成应用名称失败，使用兜底名称：{}", e.getMessage());
+            return fallbackName;
+        }
+    }
+
+    /**
+     * 清洗 AI 生成的应用名称：去首尾空白、去掉包裹引号、只取第一行
+     *
+     * @param aiName AI 原始输出
+     * @return 清洗后的名称
+     */
+    private String cleanAiAppName(String aiName) {
+        if (StrUtil.isBlank(aiName)) {
+            return aiName;
+        }
+        // 只取第一行（模型可能附带解释性文字）
+        String name = aiName.split("\\r?\\n")[0].trim();
+        // 去掉可能包裹的引号（英文/中文双引号、单引号）
+        name = name.replaceAll("[\"“”'‘’]", "");
+        return StrUtil.trim(name);
+    }
     // ==================== 版本管理内部私有逻辑（对外不可见） ====================
 
     /**
