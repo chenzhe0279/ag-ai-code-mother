@@ -94,9 +94,29 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         boolean update = this.updateById(updateApp);
         ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "更新应用生成状态失败");
         //6调用AI大模型生成代码
-        return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId ,nextVersion);
+        //return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId ,nextVersion);
+        Flux<String> codeFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId, nextVersion);
+        return codeFlux
+                // 流正常结束（此时文件已在 Facade 的 doOnComplete 中保存完毕）后置为已成功
+                .doOnComplete(() -> updateGenStatus(appId, AppGenStatusEnum.SUCCEEDED))
+                // 流异常时置为失败，并保留错误日志方便排查
+                .doOnError(error -> {
+                    log.error("AI 代码生成失败, appId={}", appId, error);
+                    updateGenStatus(appId, AppGenStatusEnum.FAILED);
+                })
+                // 客户端中途关页面/断开 SSE 也视为失败，避免状态永远卡在生成中
+                .doOnCancel(() -> updateGenStatus(appId, AppGenStatusEnum.FAILED));
     }
 
+    /**
+     * 更新应用生成状态（流式回调中调用，独立于主事务执行）
+     */
+    private void updateGenStatus(Long appId, AppGenStatusEnum status) {
+        App updateApp = new App();
+        updateApp.setId(appId);
+        updateApp.setGenStatus(status.getValue());
+        this.updateById(updateApp);
+    }
     @Override
     public String deployApp(Long appId, User loginUser) {
         //1.参数校验

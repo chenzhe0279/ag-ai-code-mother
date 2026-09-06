@@ -127,6 +127,9 @@ public class AiCodeGeneratorFacade {
                         // 注意：版本号已在生成前预留，失败会导致该版本号"跳空"（无对应目录），
                         // 这是预留制方案的已知取舍，部署/列表/静态访问接口均有存在性校验兜底。
                         log.error("保存失败: {}", e.getMessage());
+                        // 保存失败让流以错误结束：外层 doOnError 会把状态标为 failed，
+                        // 前端也会提示生成中断，避免"状态已成功但磁盘无文件"的假象
+                        throw new BusinessException(ErrorCode.SYSTEM_ERROR, "生成代码保存失败：" + e.getMessage());
                     }
                 });
     }
