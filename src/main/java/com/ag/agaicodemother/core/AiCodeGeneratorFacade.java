@@ -2,6 +2,7 @@ package com.ag.agaicodemother.core;
 
 
 import com.ag.agaicodemother.ai.AiCodeGeneratorService;
+import com.ag.agaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.ag.agaicodemother.ai.model.HtmlCodeResult;
 import com.ag.agaicodemother.ai.model.MultiFileCodeResult;
 import com.ag.agaicodemother.core.parser.CodeParserExecutor;
@@ -24,7 +25,7 @@ import java.io.File;
 public class AiCodeGeneratorFacade {
 
     @Resource
-    private AiCodeGeneratorService aiCodeGeneratorService;
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
 
     /**
@@ -41,6 +42,8 @@ public class AiCodeGeneratorFacade {
         if(codeGenTypeEnum == null){
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "生成类型为空");
         }
+        //根据appID获取对应的 AI 实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
         return switch (codeGenTypeEnum){
             case HTML -> {
                 // 调用 AI 服务生成 HTML 单文件代码
@@ -76,6 +79,8 @@ public class AiCodeGeneratorFacade {
         if (codeGenTypeEnum == null) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "生成类型为空");
         }
+        //根据appID获取对应的 AI 实例
+        AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.getAiCodeGeneratorService(appId);
         return switch (codeGenTypeEnum) {
             case HTML -> {
                 // 获取 HTML 代码流
