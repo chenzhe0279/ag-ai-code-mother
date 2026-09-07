@@ -15,10 +15,12 @@ import com.ag.agaicodemother.exception.ThrowUtils;
 import com.ag.agaicodemother.model.dto.app.AppQueryRequest;
 import com.ag.agaicodemother.model.entity.User;
 import com.ag.agaicodemother.model.enums.AppGenStatusEnum;
+import com.ag.agaicodemother.model.enums.ChatHistoryMessageTypeEnum;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import com.ag.agaicodemother.model.vo.AppVO;
 import com.ag.agaicodemother.model.vo.AppVersionVO;
 import com.ag.agaicodemother.model.vo.UserVO;
+import com.ag.agaicodemother.service.ChatHistoryService;
 import com.ag.agaicodemother.service.UserService;
 import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
@@ -55,6 +57,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
 
     @Resource
     private AiCodeGeneratorService aiCodeGeneratorService;
+
+    @Resource
+    private ChatHistoryService chatHistoryService;
 
     /** 预编译正则：匹配版本目录名 v1、v2、v10...（v 后必须全为数字，防止误匹配其他目录） */
     private static final Pattern VERSION_DIR_PATTERN = Pattern.compile("^v(\\d+)$");
@@ -93,15 +98,29 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         // 执行更新
         boolean update = this.updateById(updateApp);
         ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "更新应用生成状态失败");
+        //在调用AI前，先保存用户消息到数据库表中
+        chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
         //6调用AI大模型生成代码
         //return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId ,nextVersion);
         Flux<String> codeFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId, nextVersion);
+        //定义一个StringBuilder，来保存AI的回复内容
+        StringBuilder aiStrMessage = new StringBuilder();
         return codeFlux
+                .map(codeChunk -> {
+                    aiStrMessage.append(codeChunk);
+                    return codeChunk;
+                })
                 // 流正常结束（此时文件已在 Facade 的 doOnComplete 中保存完毕）后置为已成功
-                .doOnComplete(() -> updateGenStatus(appId, AppGenStatusEnum.SUCCEEDED))
+                .doOnComplete(() -> {
+                    String aiResponse = aiStrMessage.toString();
+                    chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
+                    updateGenStatus(appId, AppGenStatusEnum.SUCCEEDED);
+                })
                 // 流异常时置为失败，并保留错误日志方便排查
                 .doOnError(error -> {
                     log.error("AI 代码生成失败, appId={}", appId, error);
+                    String aiErrorMessage = "AI回复失败：" + error.getMessage();
+                    chatHistoryService.addChatMessage(appId, aiErrorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                     updateGenStatus(appId, AppGenStatusEnum.FAILED);
                 })
                 // 客户端中途关页面/断开 SSE 也视为失败，避免状态永远卡在生成中
@@ -474,6 +493,51 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         // 用英文逗号重新拼接为规范化标签串返回，保证入库格式统一
         return String.join(",", validTags);
     }
+
+    /**
+     * 删除应用并关联清理数据（数据清理功能新增）
+     * 处理顺序（先文件后记录）：
+     * 1. 校验应用存在、校验操作权限（仅创建者本人或管理员）；
+     * 2. 删除版本目录：AI 生成的所有历史版本代码一次性清掉（v1、v2... 全在应用根目录下）；
+     * 3. 删除部署目录：已部署的应用还要清掉线上文件快照，外部 URL 立即 404；
+     * 4. 逻辑删除数据库记录。
+     * 文件删除失败时只记日志不中断流程：磁盘残留只是空间浪费，
+     * 数据库记录的删除才是"删除应用"的主语义，不应被文件系统故障阻塞
+     *
+     * @param appId     应用 ID
+     * @param loginUser 登录用户
+     * @return 删除结果
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean deleteApp(Long appId, User loginUser) {
+        // 1. 参数校验：应用 id 合法、用户已登录
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
+        ThrowUtils.throwIf(loginUser == null, ErrorCode.PARAMS_ERROR, "用户未登录");
+        // 2. 查询应用信息（getById 自动过滤已逻辑删除的数据）
+        App app = this.getById(appId);
+        // 应用不存在时抛出"数据不存在"异常
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 权限校验：仅创建者本人或管理员可以删除应用
+        if (!app.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "仅应用创建者或管理员可以删除应用");
+        }
+        // 4. 清理版本目录：tmp/code_output/{codeType}_{appId}/
+        //    复用已有的 getVersionRootDir 方法拼出应用根目录（包含全部 v{n} 版本子目录）
+        cleanDirQuietly(getVersionRootDir(app), "版本目录");
+        // 5. 清理部署目录：tmp/code_deploy/{deployKey}/（仅部署过的应用才有）
+        if (StrUtil.isNotBlank(app.getDeployKey())) {
+            // deployKey 非空说明部署过，拼接部署目录路径并清理
+            String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + app.getDeployKey();
+            // 静默清理：失败只记日志，不阻塞删除主流程
+            cleanDirQuietly(deployDirPath, "部署目录");
+        }
+        // 6. 逻辑删除数据库记录（isDelete 置 1，与项目删除惯例一致）
+        //要先关联删除对话消息的历史记录
+        chatHistoryService.deleteByAppId(appId);
+        return this.removeById(appId);
+    }
+
     // ==================== 版本管理内部私有逻辑（对外不可见） ====================
 
     /**
@@ -677,47 +741,6 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
      */
     private File getVersionDir(App app, Integer version) {
         return new File(getVersionRootDir(app) + File.separator + AppConstant.CODE_VERSION_DIR_PREFIX + version);
-    }
-
-    /**
-     * 删除应用并关联清理数据（数据清理功能新增）
-     * 处理顺序（先文件后记录）：
-     * 1. 校验应用存在、校验操作权限（仅创建者本人或管理员）；
-     * 2. 删除版本目录：AI 生成的所有历史版本代码一次性清掉（v1、v2... 全在应用根目录下）；
-     * 3. 删除部署目录：已部署的应用还要清掉线上文件快照，外部 URL 立即 404；
-     * 4. 逻辑删除数据库记录。
-     * 文件删除失败时只记日志不中断流程：磁盘残留只是空间浪费，
-     * 数据库记录的删除才是"删除应用"的主语义，不应被文件系统故障阻塞
-     *
-     * @param appId     应用 ID
-     * @param loginUser 登录用户
-     * @return 删除结果
-     */
-    @Override
-    public boolean deleteApp(Long appId, User loginUser) {
-        // 1. 参数校验：应用 id 合法、用户已登录
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
-        ThrowUtils.throwIf(loginUser == null, ErrorCode.PARAMS_ERROR, "用户未登录");
-        // 2. 查询应用信息（getById 自动过滤已逻辑删除的数据）
-        App app = this.getById(appId);
-        // 应用不存在时抛出"数据不存在"异常
-        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
-        // 3. 权限校验：仅创建者本人或管理员可以删除应用
-        if (!app.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "仅应用创建者或管理员可以删除应用");
-        }
-        // 4. 清理版本目录：tmp/code_output/{codeType}_{appId}/
-        //    复用已有的 getVersionRootDir 方法拼出应用根目录（包含全部 v{n} 版本子目录）
-        cleanDirQuietly(getVersionRootDir(app), "版本目录");
-        // 5. 清理部署目录：tmp/code_deploy/{deployKey}/（仅部署过的应用才有）
-        if (StrUtil.isNotBlank(app.getDeployKey())) {
-            // deployKey 非空说明部署过，拼接部署目录路径并清理
-            String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + app.getDeployKey();
-            // 静默清理：失败只记日志，不阻塞删除主流程
-            cleanDirQuietly(deployDirPath, "部署目录");
-        }
-        // 6. 逻辑删除数据库记录（isDelete 置 1，与项目删除惯例一致）
-        return this.removeById(appId);
     }
 
     /**

@@ -63,6 +63,23 @@ create table if not exists app
 ) comment '应用' collate = utf8mb4_unicode_ci;
 
 
+-- 对话历史表
+create table if not exists chat_history
+(
+    id          bigint auto_increment comment 'id' primary key,
+    message     text                               not null comment '消息',
+    messageType varchar(32)                        not null comment 'user/ai',
+    appId       bigint                             not null comment '应用id',
+    userId      bigint                             not null comment '创建用户id',
+    createTime  datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime  datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete    tinyint  default 0                 not null comment '是否删除',
+    INDEX idx_appId (appId),                       -- 提升基于应用的查询性能
+    INDEX idx_createTime (createTime),             -- 提升基于时间的查询性能
+    INDEX idx_appId_createTime (appId, createTime) -- 游标查询核心索引
+) comment '对话历史' collate = utf8mb4_unicode_ci;
+
+
 -- 迁移脚本：给已上线数据库的 app 表添加版本号字段
 -- 存量数据默认 currentVersion = 1，配合后端"懒迁移"逻辑，
 -- 旧版平铺目录会在首次访问时自动挪入 v1/ 子目录，无需手工处理文件
