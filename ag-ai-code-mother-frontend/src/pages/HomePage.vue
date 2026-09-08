@@ -3,7 +3,13 @@ import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
-import { addApp, listMyAppVoByPage, listGoodAppVoByPage } from '@/api/appController'
+import {
+  addApp,
+  listMyAppVoByPage,
+  listGoodAppVoByPage,
+  pinApp,
+  unpinApp,
+} from '@/api/appController'
 import { getDeployUrl } from '@/config/env'
 import AppCard from '@/components/AppCard.vue'
 
@@ -13,6 +19,7 @@ const loginUserStore = useLoginUserStore()
 // 用户提示词
 const userPrompt = ref('')
 const creating = ref(false)
+const visibility = ref<'public' | 'private'>('public')
 
 // 我的应用数据
 const myApps = ref<API.AppVO[]>([])
@@ -35,8 +42,6 @@ const setPrompt = (prompt: string) => {
   userPrompt.value = prompt
 }
 
-// 优化提示词功能已移除
-
 // 创建应用
 const createApp = async () => {
   if (!userPrompt.value.trim()) {
@@ -54,6 +59,7 @@ const createApp = async () => {
   try {
     const res = await addApp({
       initPrompt: userPrompt.value.trim(),
+      visibility: visibility.value,
     })
 
     if (res.data.code === 0 && res.data.data) {
@@ -129,62 +135,72 @@ const viewWork = (app: API.AppVO) => {
   }
 }
 
-// 格式化时间函数已移除，不再需要显示创建时间
+// 置顶 / 取消置顶
+const handlePinToggle = async (app: API.AppVO) => {
+  if (!app.id) return
+  const willPin = app.priority !== 999
+  try {
+    const res = willPin ? await pinApp({ appId: app.id }) : await unpinApp({ appId: app.id })
+    if (res.data.code === 0) {
+      message.success(willPin ? '置顶成功' : '已取消置顶')
+      loadMyApps()
+      loadFeaturedApps()
+    } else {
+      message.error('操作失败：' + res.data.message)
+    }
+  } catch (error) {
+    console.error('置顶操作失败：', error)
+    message.error('操作失败，请重试')
+  }
+}
 
 // 页面加载时获取数据
 onMounted(() => {
   loadMyApps()
   loadFeaturedApps()
-
-  // 鼠标跟随光效
-  const handleMouseMove = (e: MouseEvent) => {
-    const { clientX, clientY } = e
-    const { innerWidth, innerHeight } = window
-    const x = (clientX / innerWidth) * 100
-    const y = (clientY / innerHeight) * 100
-
-    document.documentElement.style.setProperty('--mouse-x', `${x}%`)
-    document.documentElement.style.setProperty('--mouse-y', `${y}%`)
-  }
-
-  document.addEventListener('mousemove', handleMouseMove)
-
-  // 清理事件监听器
-  return () => {
-    document.removeEventListener('mousemove', handleMouseMove)
-  }
 })
 </script>
 
 <template>
   <div id="homePage">
-    <div class="container">
-      <!-- 网站标题和描述 -->
-      <div class="hero-section">
-        <h1 class="hero-title">AI 应用生成平台</h1>
-        <p class="hero-description">一句话轻松创建网站应用</p>
+    <div class="home-container">
+      <!-- Hero 区 -->
+      <div class="hero">
+        <p class="eyebrow reveal">ZERO-CODE AI, EXPANDED</p>
+        <h1 class="hero-title reveal">一句描述，<em>生成完整应用。</em></h1>
+        <p class="hero-description reveal">
+          一句话轻松创建网站应用，从想法到上线只差一次回车。
+        </p>
       </div>
 
       <!-- 用户提示词输入框 -->
-      <div class="input-section">
+      <div class="input-section reveal">
         <a-textarea
           v-model:value="userPrompt"
           placeholder="帮我创建个人博客网站"
           :rows="4"
           :maxlength="1000"
           class="prompt-input"
+          @keydown.enter.exact.prevent="createApp"
         />
         <div class="input-actions">
-          <a-button type="primary" size="large" @click="createApp" :loading="creating">
+          <a-button type="primary" shape="circle" size="large" :loading="creating" @click="createApp">
             <template #icon>
-              <span>↑</span>
+              <span class="send-arrow">↑</span>
             </template>
           </a-button>
+        </div>
+        <div class="visibility-row">
+          <span class="visibility-label">可见范围</span>
+          <a-radio-group v-model:value="visibility" size="small">
+            <a-radio-button value="public">公开</a-radio-button>
+            <a-radio-button value="private">私有</a-radio-button>
+          </a-radio-group>
         </div>
       </div>
 
       <!-- 快捷按钮 -->
-      <div class="quick-actions">
+      <div class="quick-actions reveal">
         <a-button
           type="default"
           @click="
@@ -224,7 +240,8 @@ onMounted(() => {
       </div>
 
       <!-- 我的作品 -->
-      <div class="section">
+      <div v-if="loginUserStore.loginUser.id" class="section">
+        <p class="section-eyebrow">MY APPS</p>
         <h2 class="section-title">我的作品</h2>
         <div class="app-grid">
           <AppCard
@@ -233,6 +250,7 @@ onMounted(() => {
             :app="app"
             @view-chat="viewChat"
             @view-work="viewWork"
+            @pin-toggle="handlePinToggle"
           />
         </div>
         <div class="pagination-wrapper">
@@ -249,8 +267,9 @@ onMounted(() => {
 
       <!-- 精选案例 -->
       <div class="section">
+        <p class="section-eyebrow">FEATURED</p>
         <h2 class="section-title">精选案例</h2>
-        <div class="featured-grid">
+        <div class="app-grid">
           <AppCard
             v-for="app in featuredApps"
             :key="app.id"
@@ -258,6 +277,7 @@ onMounted(() => {
             :featured="true"
             @view-chat="viewChat"
             @view-work="viewWork"
+            @pin-toggle="handlePinToggle"
           />
         </div>
         <div class="pagination-wrapper">
@@ -271,6 +291,14 @@ onMounted(() => {
           />
         </div>
       </div>
+
+      <!-- 特性条 -->
+      <div class="feature-strip">
+        <div class="feature reveal"><b>流式生成</b><span>AI 逐字输出，实时预览</span></div>
+        <div class="feature reveal"><b>版本管理</b><span>历史版本一键回退</span></div>
+        <div class="feature reveal"><b>一键部署</b><span>生成即可上线访问</span></div>
+        <div class="feature reveal"><b>可视编辑</b><span>选中元素精准修改</span></div>
+      </div>
     </div>
   </div>
 </template>
@@ -278,200 +306,122 @@ onMounted(() => {
 <style scoped>
 #homePage {
   width: 100%;
-  margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  background:
-    linear-gradient(180deg, #f8fafc 0%, #f1f5f9 8%, #e2e8f0 20%, #cbd5e1 100%),
-    radial-gradient(circle at 20% 80%, rgba(59, 130, 246, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
-    radial-gradient(circle at 40% 40%, rgba(16, 185, 129, 0.08) 0%, transparent 50%);
-  position: relative;
-  overflow: hidden;
+  min-height: calc(100vh - 64px);
 }
 
-/* 科技感网格背景 */
-#homePage::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-image:
-    linear-gradient(rgba(59, 130, 246, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(59, 130, 246, 0.05) 1px, transparent 1px),
-    linear-gradient(rgba(139, 92, 246, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(139, 92, 246, 0.04) 1px, transparent 1px);
-  background-size:
-    100px 100px,
-    100px 100px,
-    20px 20px,
-    20px 20px;
-  pointer-events: none;
-  animation: gridFloat 20s ease-in-out infinite;
-}
-
-/* 动态光效 */
-#homePage::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(
-      600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-      rgba(59, 130, 246, 0.08) 0%,
-      rgba(139, 92, 246, 0.06) 40%,
-      transparent 80%
-    ),
-    linear-gradient(45deg, transparent 30%, rgba(59, 130, 246, 0.04) 50%, transparent 70%),
-    linear-gradient(-45deg, transparent 30%, rgba(139, 92, 246, 0.04) 50%, transparent 70%);
-  pointer-events: none;
-  animation: lightPulse 8s ease-in-out infinite alternate;
-}
-
-@keyframes gridFloat {
-  0%,
-  100% {
-    transform: translate(0, 0);
-  }
-  50% {
-    transform: translate(5px, 5px);
-  }
-}
-
-@keyframes lightPulse {
-  0% {
-    opacity: 0.3;
-  }
-  100% {
-    opacity: 0.7;
-  }
-}
-
-.container {
-  max-width: 1200px;
+.home-container {
+  width: min(1160px, calc(100% - 64px));
   margin: 0 auto;
-  padding: 20px;
-  position: relative;
-  z-index: 2;
-  width: 100%;
-  box-sizing: border-box;
+  padding: 29px 0 24px;
+  display: flex;
+  flex-direction: column;
 }
 
-/* 移除居中光束效果 */
-
-/* 英雄区域 */
-.hero-section {
-  text-align: center;
-  padding: 80px 0 60px;
-  margin-bottom: 28px;
-  color: #1e293b;
-  position: relative;
-  overflow: hidden;
+/* Hero 区 */
+.hero {
+  max-width: 820px;
+  padding-top: 54px;
+  margin-bottom: 44px;
 }
 
-.hero-section::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background:
-    radial-gradient(ellipse 800px 400px at center, rgba(59, 130, 246, 0.12) 0%, transparent 70%),
-    linear-gradient(45deg, transparent 30%, rgba(139, 92, 246, 0.05) 50%, transparent 70%),
-    linear-gradient(-45deg, transparent 30%, rgba(16, 185, 129, 0.04) 50%, transparent 70%);
-  animation: heroGlow 10s ease-in-out infinite alternate;
-}
-
-@keyframes heroGlow {
-  0% {
-    opacity: 0.6;
-    transform: scale(1);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1.02);
-  }
-}
-
-@keyframes rotate {
-  0% {
-    transform: translate(-50%, -50%) rotate(0deg);
-  }
-  100% {
-    transform: translate(-50%, -50%) rotate(360deg);
-  }
-}
+/* 入场显现交错延迟（顺序与 DOM 一致，节奏约 1.8s） */
+.hero .eyebrow { --rd: 380ms; }
+.hero .hero-title { --rd: 520ms; }
+.hero .hero-description { --rd: 660ms; }
+.input-section { --rd: 800ms; }
+.quick-actions { --rd: 940ms; }
+.app-grid > :nth-child(1) { --rd: 960ms; }
+.app-grid > :nth-child(2) { --rd: 1080ms; }
+.app-grid > :nth-child(3) { --rd: 1200ms; }
+.app-grid > :nth-child(4) { --rd: 1280ms; }
+.app-grid > :nth-child(5) { --rd: 1360ms; }
+.app-grid > :nth-child(6) { --rd: 1440ms; }
+.feature-strip > .feature:nth-child(1) { --rd: 1560ms; }
+.feature-strip > .feature:nth-child(2) { --rd: 1660ms; }
+.feature-strip > .feature:nth-child(3) { --rd: 1760ms; }
+.feature-strip > .feature:nth-child(4) { --rd: 1860ms; }
 
 .hero-title {
-  font-size: 56px;
-  font-weight: 700;
-  margin: 0 0 20px;
-  line-height: 1.2;
-  background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 50%, #10b981 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -1px;
-  position: relative;
-  z-index: 2;
-  animation: titleShimmer 3s ease-in-out infinite;
+  margin: 0;
+  font: 700 clamp(44px, 6.4vw, 80px) / 1.06 'Playfair Display', 'Noto Sans SC', serif;
+  letter-spacing: -0.055em;
+  color: var(--text);
+  text-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
 }
 
-@keyframes titleShimmer {
-  0%,
-  100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
+.hero-title em {
+  font-weight: 600;
+  background: linear-gradient(115deg, #b9c7ff 12%, #c9a8ff 46%, #7ee6cf 88%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
 }
 
 .hero-description {
-  font-size: 20px;
-  margin: 0;
-  opacity: 0.8;
-  color: #64748b;
-  position: relative;
-  z-index: 2;
+  max-width: 520px;
+  margin: 26px 0 0;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1.9;
 }
 
-/* 输入区域 */
+/* 输入区 */
 .input-section {
   position: relative;
   margin: 0 auto 24px;
   max-width: 800px;
+  width: 100%;
+  padding: 18px 18px 10px;
+  border: 1px solid rgba(175, 190, 225, 0.28);
+  border-radius: 18px;
+  background: rgba(17, 26, 49, 0.42);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(12px);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-section:focus-within {
+  border-color: rgba(170, 189, 249, 0.6);
+  box-shadow:
+    0 0 0 3px rgba(124, 145, 223, 0.12),
+    0 14px 40px rgba(0, 0, 0, 0.4);
 }
 
 .prompt-input {
-  border-radius: 16px;
   border: none;
-  font-size: 16px;
-  padding: 20px 60px 20px 20px;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(20px);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
 }
 
-.prompt-input:focus {
-  background: rgba(255, 255, 255, 1);
-  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
-  transform: translateY(-2px);
+.prompt-input::placeholder {
+  color: #7987a7;
 }
 
 .input-actions {
   position: absolute;
-  bottom: 12px;
-  right: 12px;
+  right: 20px;
+  bottom: 46px;
+}
+
+.send-arrow {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.visibility-row {
   display: flex;
-  gap: 8px;
+  justify-content: flex-end;
   align-items: center;
+  gap: 10px;
+  padding: 6px 4px 4px;
+}
+
+.visibility-label {
+  color: var(--text-faint);
+  font: 10px 'DM Mono', monospace;
+  letter-spacing: 0.1em;
 }
 
 /* 快捷按钮 */
@@ -483,40 +433,23 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.quick-actions .ant-btn {
-  border-radius: 25px;
+.quick-actions :deep(.ant-btn) {
+  border: 1px solid var(--line);
+  border-radius: 12px;
   padding: 8px 20px;
   height: auto;
-  background: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(59, 130, 246, 0.2);
-  color: #475569;
-  backdrop-filter: blur(15px);
-  transition: all 0.3s;
-  position: relative;
-  overflow: hidden;
+  background: rgba(24, 34, 66, 0.32);
+  color: #cdd8f5;
+  backdrop-filter: blur(8px);
+  transition: all 0.25s ease;
 }
 
-.quick-actions .ant-btn::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.1), transparent);
-  transition: left 0.5s;
-}
-
-.quick-actions .ant-btn:hover::before {
-  left: 100%;
-}
-
-.quick-actions .ant-btn:hover {
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(59, 130, 246, 0.4);
-  color: #3b82f6;
+.quick-actions :deep(.ant-btn:hover) {
+  border-color: rgba(190, 205, 255, 0.55);
+  color: #fff;
+  background: rgba(31, 44, 84, 0.4);
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 8px 25px rgba(109, 124, 255, 0.2);
 }
 
 /* 区域标题 */
@@ -524,26 +457,24 @@ onMounted(() => {
   margin-bottom: 60px;
 }
 
-.section-title {
-  font-size: 32px;
-  font-weight: 600;
-  margin-bottom: 32px;
-  color: #1e293b;
+.section-eyebrow {
+  margin: 0 0 8px;
+  color: #c0adff;
+  font: 10px 'DM Mono', monospace;
+  letter-spacing: 0.14em;
 }
 
-/* 我的作品网格 */
+.section-title {
+  font: 600 30px/1.2 'Playfair Display', 'Noto Sans SC', serif;
+  margin: 0 0 28px;
+  color: var(--text);
+}
+
+/* 应用网格 */
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 24px;
-  margin-bottom: 32px;
-}
-
-/* 精选案例网格 */
-.featured-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
   margin-bottom: 32px;
 }
 
@@ -551,26 +482,84 @@ onMounted(() => {
 .pagination-wrapper {
   display: flex;
   justify-content: center;
-  margin-top: 32px;
+  margin-top: 12px;
 }
 
-/* 响应式设计 */
-@media (max-width: 768px) {
-  .hero-title {
-    font-size: 32px;
-  }
+/* 特性条 */
+.feature-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 10px;
+}
 
-  .hero-description {
-    font-size: 16px;
-  }
+.feature {
+  display: grid;
+  gap: 5px;
+  padding: 17px 18px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: rgba(15, 23, 48, 0.32);
+  backdrop-filter: blur(8px);
+  transition: 0.25s ease;
+}
 
-  .app-grid,
-  .featured-grid {
+.feature:hover {
+  border-color: rgba(190, 205, 255, 0.32);
+  background: rgba(21, 31, 64, 0.42);
+  transform: translateY(-3px);
+}
+
+.feature b {
+  font: 500 12px 'DM Mono', monospace;
+  letter-spacing: 0.08em;
+  color: #e4eaff;
+}
+
+.feature b::before {
+  content: '◆ ';
+  color: var(--teal);
+  font-size: 9px;
+  vertical-align: 1px;
+}
+
+.feature span {
+  color: #8c9abc;
+  font-size: 12px;
+}
+
+/* 响应式 */
+@media (max-width: 900px) {
+  .feature-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .app-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
+  .home-container {
+    width: min(100% - 40px, 1160px);
+  }
+  .hero {
+    padding-top: 30px;
+    margin-bottom: 32px;
+  }
+}
+
+@media (max-width: 560px) {
+  .home-container {
+    width: calc(100% - 32px);
+  }
+  .app-grid {
     grid-template-columns: 1fr;
   }
-
-  .quick-actions {
-    justify-content: center;
+  .feature-strip {
+    grid-template-columns: 1fr;
+  }
+  .input-actions {
+    bottom: 50px;
   }
 }
 </style>

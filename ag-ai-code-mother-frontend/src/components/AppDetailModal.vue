@@ -18,6 +18,32 @@
           </a-tag>
           <span v-else>未知类型</span>
         </div>
+        <div class="info-item">
+          <span class="info-label">生成状态：</span>
+          <a-tag v-if="app?.genStatus === 'generating'" color="processing">生成中</a-tag>
+          <a-tag v-else-if="app?.genStatus === 'succeeded'" color="success">生成成功</a-tag>
+          <a-tag v-else-if="app?.genStatus === 'failed'" color="error">生成失败</a-tag>
+          <a-tag v-else>未开始</a-tag>
+        </div>
+        <div class="info-item">
+          <span class="info-label">当前版本：</span>
+          <span>{{ app?.currentVersion ? `v${app.currentVersion}` : '-' }}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">部署状态：</span>
+          <a-tag v-if="!app?.deployKey">未部署</a-tag>
+          <a-tag v-else-if="app?.deployStatus === 'online'" color="success">已上线</a-tag>
+          <a-tag v-else>已下线</a-tag>
+        </div>
+        <div class="info-item">
+          <span class="info-label">可见范围：</span>
+          <a-tag v-if="app?.visibility === 'private'" color="orange">私有</a-tag>
+          <a-tag v-else color="green">公开</a-tag>
+        </div>
+        <div v-if="tagList.length" class="info-item">
+          <span class="info-label">应用标签：</span>
+          <a-tag v-for="tag in tagList" :key="tag" color="blue">{{ tag }}</a-tag>
+        </div>
       </div>
 
       <!-- 操作栏（仅本人或管理员可见） -->
@@ -78,6 +104,11 @@ const visible = computed({
   set: (value) => emit('update:open', value),
 })
 
+const tagList = computed(() => {
+  if (!props.app?.tags) return []
+  return props.app.tags.split(',').filter(Boolean)
+})
+
 const handleEdit = () => {
   emit('edit')
 }
@@ -103,7 +134,7 @@ const handleDelete = () => {
 }
 
 .info-label {
-  width: 80px;
+  width: 90px;
   color: #666;
   font-size: 14px;
   flex-shrink: 0;

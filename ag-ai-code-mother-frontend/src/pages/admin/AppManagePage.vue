@@ -14,7 +14,7 @@
           placeholder="选择生成类型"
           style="width: 150px"
         >
-          <a-select-option value="">全部</a-select-option>
+          <a-select-option :value="undefined">全部</a-select-option>
           <a-select-option
             v-for="option in CODE_GEN_TYPE_OPTIONS"
             :key="option.value"
@@ -23,6 +23,47 @@
             {{ option.label }}
           </a-select-option>
         </a-select>
+      </a-form-item>
+      <a-form-item label="部署状态">
+        <a-select
+          v-model:value="searchParams.deployStatus"
+          placeholder="全部"
+          style="width: 130px"
+          allow-clear
+        >
+          <a-select-option :value="undefined">全部</a-select-option>
+          <a-select-option value="online">已上线</a-select-option>
+          <a-select-option value="offline">已下线</a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item label="生成状态">
+        <a-select
+          v-model:value="searchParams.genStatus"
+          placeholder="全部"
+          style="width: 130px"
+          allow-clear
+        >
+          <a-select-option :value="undefined">全部</a-select-option>
+          <a-select-option value="not_start">未开始</a-select-option>
+          <a-select-option value="generating">生成中</a-select-option>
+          <a-select-option value="succeeded">生成成功</a-select-option>
+          <a-select-option value="failed">生成失败</a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item label="可见范围">
+        <a-select
+          v-model:value="searchParams.visibility"
+          placeholder="全部"
+          style="width: 120px"
+          allow-clear
+        >
+          <a-select-option :value="undefined">全部</a-select-option>
+          <a-select-option value="public">公开</a-select-option>
+          <a-select-option value="private">私有</a-select-option>
+        </a-select>
+      </a-form-item>
+      <a-form-item label="标签">
+        <a-input v-model:value="searchParams.tagName" placeholder="输入标签筛选" />
       </a-form-item>
       <a-form-item>
         <a-button type="primary" html-type="submit">搜索</a-button>
@@ -36,7 +77,7 @@
       :data-source="data"
       :pagination="pagination"
       @change="doTableChange"
-      :scroll="{ x: 1200 }"
+      :scroll="{ x: 1600 }"
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'cover'">
@@ -60,6 +101,21 @@
             {{ formatTime(record.deployedTime) }}
           </span>
           <span v-else class="text-gray">未部署</span>
+        </template>
+        <template v-else-if="column.dataIndex === 'deployStatus'">
+          <a-tag v-if="!record.deployKey">未部署</a-tag>
+          <a-tag v-else-if="record.deployStatus === 'online'" color="success">已上线</a-tag>
+          <a-tag v-else>已下线</a-tag>
+        </template>
+        <template v-else-if="column.dataIndex === 'genStatus'">
+          <a-tag v-if="record.genStatus === 'generating'" color="processing">生成中</a-tag>
+          <a-tag v-else-if="record.genStatus === 'succeeded'" color="success">生成成功</a-tag>
+          <a-tag v-else-if="record.genStatus === 'failed'" color="error">生成失败</a-tag>
+          <a-tag v-else>未开始</a-tag>
+        </template>
+        <template v-else-if="column.dataIndex === 'visibility'">
+          <a-tag v-if="record.visibility === 'private'" color="orange">私有</a-tag>
+          <a-tag v-else color="green">公开</a-tag>
         </template>
         <template v-else-if="column.dataIndex === 'createTime'">
           {{ formatTime(record.createTime) }}
@@ -135,6 +191,21 @@ const columns = [
     title: '部署时间',
     dataIndex: 'deployedTime',
     width: 160,
+  },
+  {
+    title: '部署状态',
+    dataIndex: 'deployStatus',
+    width: 100,
+  },
+  {
+    title: '生成状态',
+    dataIndex: 'genStatus',
+    width: 100,
+  },
+  {
+    title: '可见范围',
+    dataIndex: 'visibility',
+    width: 100,
   },
   {
     title: '创建者',

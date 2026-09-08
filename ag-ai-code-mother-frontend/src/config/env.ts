@@ -17,9 +17,14 @@ export const getDeployUrl = (deployKey: string) => {
   return `${DEPLOY_DOMAIN}/${deployKey}`
 }
 
-// 获取静态资源预览URL
-export const getStaticPreviewUrl = (codeGenType: string, appId: string) => {
-  const baseUrl = `${STATIC_BASE_URL}/${codeGenType}_${appId}/`
+// 获取静态资源预览URL（版本化改造后代码保存在 v{currentVersion} 子目录下）
+export const getStaticPreviewUrl = (
+  codeGenType: string,
+  appId: string,
+  currentVersion?: number,
+) => {
+  const version = currentVersion && currentVersion > 0 ? currentVersion : 1
+  const baseUrl = `${STATIC_BASE_URL}/${codeGenType}_${appId}/v${version}/`
   // 如果是 Vue 项目，浏览地址需要添加 dist 后缀
   if (codeGenType === CodeGenTypeEnum.VUE_PROJECT) {
     return `${baseUrl}dist/index.html`

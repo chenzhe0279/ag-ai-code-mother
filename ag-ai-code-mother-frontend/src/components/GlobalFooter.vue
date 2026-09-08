@@ -1,16 +1,8 @@
 <template>
-  <a-layout-footer class="footer">
+  <a-layout-footer class="footer reveal" style="--rd: 1820ms">
     <div class="footer-content">
-      <p class="copyright">
-        <a
-          href="https://www.codefather.cn"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="author-link"
-        >
-          编程导航原创项目 by 程序员鱼皮
-        </a>
-      </p>
+      <span>© {{ new Date().getFullYear() }} AI 零码</span>
+      <span>一句话生成应用 · 探索无限可能</span>
     </div>
   </a-layout-footer>
 </template>
@@ -21,17 +13,24 @@
 
 <style scoped>
 .footer {
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(10px);
-  text-align: center;
-  padding: 20px;
-  margin-top: 40px;
-  border-top: 1px solid rgba(102, 126, 234, 0.1);
+  padding: 16px 24px 20px;
+  margin-top: 24px;
 }
 
-.copyright {
-  margin: 0;
-  color: #666;
-  font-size: 14px;
+.footer-content {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  color: #7181ac;
+  font: 10px 'DM Mono', monospace;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 560px) {
+  .footer-content {
+    display: block;
+    line-height: 2;
+    text-align: center;
+  }
 }
 </style>

@@ -7,6 +7,22 @@
         <a-tag v-if="appInfo?.codeGenType" color="blue" class="code-gen-type-tag">
           {{ formatCodeGenType(appInfo.codeGenType) }}
         </a-tag>
+        <a-tag v-if="appInfo?.currentVersion" color="geekblue" class="code-gen-type-tag">
+          v{{ appInfo.currentVersion }}
+        </a-tag>
+        <a-tag
+          v-if="appInfo?.deployKey && appInfo?.deployStatus === 'online'"
+          color="success"
+          class="code-gen-type-tag"
+        >
+          已上线
+        </a-tag>
+        <a-tag
+          v-if="appInfo?.deployKey && appInfo?.deployStatus === 'offline'"
+          class="code-gen-type-tag"
+        >
+          已下线
+        </a-tag>
       </div>
       <div class="header-right">
         <a-button type="default" @click="showAppDetail">
@@ -14,6 +30,12 @@
             <InfoCircleOutlined />
           </template>
           应用详情
+        </a-button>
+        <a-button v-if="isOwner || isAdmin" type="default" @click="openVersionDrawer">
+          <template #icon>
+            <HistoryOutlined />
+          </template>
+          历史版本
         </a-button>
         <a-button
             type="primary"
@@ -32,6 +54,18 @@
             <CloudUploadOutlined />
           </template>
           部署
+        </a-button>
+        <a-button
+          v-if="appInfo?.deployKey && appInfo?.deployStatus === 'online'"
+          danger
+          ghost
+          :loading="undeploying"
+          @click="undeployCurrentApp"
+        >
+          <template #icon>
+            <CloudDownloadOutlined />
+          </template>
+          下线
         </a-button>
       </div>
     </div>
@@ -62,8 +96,8 @@
               <div class="message-content">
                 <MarkdownRenderer v-if="message.content" :content="message.content" />
                 <div v-if="message.loading" class="loading-indicator">
-                  <a-spin size="small" />
-                  <span>AI 正在思考...</span>
+                  <span>正在深度思考中…</span>
+                  <span class="thinking-dots"><b></b><b></b><b></b></span>
                 </div>
               </div>
             </div>
@@ -132,9 +166,17 @@
             />
             <div class="input-actions">
               <a-button
+                  v-if="isGenerating"
+                  class="stop-btn"
+                  title="停止生成"
+                  @click="stopGeneration"
+              >
+                ■
+              </a-button>
+              <a-button
+                  v-else
                   type="primary"
                   @click="sendMessage"
-                  :loading="isGenerating"
                   :disabled="!isOwner"
               >
                 <template #icon>
@@ -206,6 +248,30 @@
         :deploy-url="deployUrl"
         @open-site="openDeployedSite"
     />
+
+    <!-- 历史版本抽屉 -->
+    <a-drawer v-model:open="versionDrawerVisible" title="历史版本" width="420">
+      <a-spin :spinning="versionLoading">
+        <a-empty v-if="!versionList.length" description="暂无历史版本" />
+        <div v-for="v in versionList" :key="v.version" class="version-item">
+          <div class="version-info">
+            <span class="version-no">v{{ v.version }}</span>
+            <a-tag v-if="v.isCurrent" color="blue">当前</a-tag>
+            <span class="version-time">{{ formatTime(v.createTime) }}</span>
+          </div>
+          <a-space>
+            <a-button type="link" size="small" @click="previewVersion(v)">预览</a-button>
+            <a-popconfirm
+              v-if="!v.isCurrent"
+              title="确定回退到该版本吗？"
+              @confirm="rollbackTo(v)"
+            >
+              <a-button type="link" size="small" danger>回退到此版本</a-button>
+            </a-popconfirm>
+          </a-space>
+        </div>
+      </a-spin>
+    </a-drawer>
   </div>
 </template>
 
@@ -218,9 +284,13 @@ import {
   getAppVoById,
   deployApp as deployAppApi,
   deleteApp as deleteAppApi,
+  listAppVersions,
+  rollbackApp as rollbackAppApi,
+  undeployApp as undeployAppApi,
 } from '@/api/appController'
 import { listAppChatHistory } from '@/api/chatHistoryController'
 import { CodeGenTypeEnum, formatCodeGenType } from '@/utils/codeGenTypes'
+import { formatTime } from '@/utils/time'
 import request from '@/request'
 
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
@@ -232,11 +302,13 @@ import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 
 import {
   CloudUploadOutlined,
+  CloudDownloadOutlined,
   SendOutlined,
   ExportOutlined,
   InfoCircleOutlined,
   DownloadOutlined,
   EditOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -274,6 +346,12 @@ const previewReady = ref(false)
 const deploying = ref(false)
 const deployModalVisible = ref(false)
 const deployUrl = ref('')
+const undeploying = ref(false)
+
+// 版本管理相关
+const versionDrawerVisible = ref(false)
+const versionLoading = ref(false)
+const versionList = ref<API.AppVersionVO[]>([])
 
 // 下载相关
 const downloading = ref(false)
@@ -298,6 +376,88 @@ const isAdmin = computed(() => {
 
 // 应用详情相关
 const appDetailVisible = ref(false)
+
+// 打开历史版本抽屉
+const openVersionDrawer = async () => {
+  versionDrawerVisible.value = true
+  await loadVersionList()
+}
+
+// 加载版本列表
+const loadVersionList = async () => {
+  if (!appId.value) return
+  versionLoading.value = true
+  try {
+    const res = await listAppVersions({ appId: appId.value as unknown as number })
+    if (res.data.code === 0) {
+      versionList.value = res.data.data || []
+    } else {
+      message.error('获取版本列表失败：' + res.data.message)
+    }
+  } catch (error) {
+    console.error('获取版本列表失败：', error)
+    message.error('获取版本列表失败')
+  } finally {
+    versionLoading.value = false
+  }
+}
+
+// 预览指定版本
+const previewVersion = (v: API.AppVersionVO) => {
+  if (!appInfo.value?.codeGenType || !appId.value || !v.version) return
+  const url = getStaticPreviewUrl(appInfo.value.codeGenType, String(appId.value), v.version)
+  window.open(url, '_blank')
+}
+
+// 回退到指定版本
+const rollbackTo = async (v: API.AppVersionVO) => {
+  if (!appId.value || !v.version) return
+  try {
+    const res = await rollbackAppApi({
+      appId: appId.value as unknown as number,
+      targetVersion: v.version,
+    })
+    if (res.data.code === 0) {
+      message.success(`已回退到 v${v.version}`)
+      await loadVersionList()
+      await fetchAppInfo()
+      updatePreview()
+    } else {
+      message.error('回退失败：' + res.data.message)
+    }
+  } catch (error) {
+    console.error('回退失败：', error)
+    message.error('回退失败，请重试')
+  }
+}
+
+// 中断生成：关闭事件源，保留已生成内容，可继续对话接续
+const stopGeneration = () => {
+  activeEventSource?.close()
+  activeEventSource = null
+  isGenerating.value = false
+  message.info('已停止生成，可继续输入接续内容')
+}
+
+// 下线当前应用
+const undeployCurrentApp = async () => {
+  if (!appId.value) return
+  undeploying.value = true
+  try {
+    const res = await undeployAppApi({ appId: appId.value as unknown as number })
+    if (res.data.code === 0) {
+      message.success('应用已下线')
+      await fetchAppInfo()
+    } else {
+      message.error('下线失败：' + res.data.message)
+    }
+  } catch (error) {
+    console.error('下线失败：', error)
+    message.error('下线失败，请重试')
+  } finally {
+    undeploying.value = false
+  }
+}
 
 // 显示应用详情
 const showAppDetail = () => {
@@ -422,6 +582,9 @@ const sendInitialMessage = async (prompt: string) => {
 
   // 开始生成
   isGenerating.value = true
+  if (appInfo.value) {
+    appInfo.value.genStatus = 'generating'
+  }
   await generateCode(prompt, aiMessageIndex)
 }
 
@@ -472,12 +635,17 @@ const sendMessage = async () => {
 
   // 开始生成
   isGenerating.value = true
+  if (appInfo.value) {
+    appInfo.value.genStatus = 'generating'
+  }
   await generateCode(message, aiMessageIndex)
 }
 
+// 组件级事件源引用：卸载时统一关闭，避免热更新/路由切换后残留连接继续推送
+let activeEventSource: EventSource | null = null
+
 // 生成代码 - 使用 EventSource 处理流式响应
 const generateCode = async (userMessage: string, aiMessageIndex: number) => {
-  let eventSource: EventSource | null = null
   let streamCompleted = false
 
   try {
@@ -492,12 +660,33 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
 
     const url = `${baseURL}/app/chat/gen/code?${params}`
 
-    // 创建 EventSource 连接
-    eventSource = new EventSource(url, {
+    // 创建 EventSource 连接（若已有旧连接先关闭，防止重复推送）
+    activeEventSource?.close()
+    activeEventSource = new EventSource(url, {
       withCredentials: true,
     })
+    const eventSource = activeEventSource
 
     let fullContent = ''
+    // 流式渲染节流：AI 回复可能包含超长代码，每个分片都全量重渲染 Markdown 并强制滚动
+    // 会持续占满主线程导致"页面无响应"，这里把渲染合并到每 150ms 一次
+    let renderScheduled = false
+    const renderTarget = () => messages.value[aiMessageIndex]
+    const flushRender = () => {
+      const target = renderTarget()
+      if (!target) return
+      target.content = fullContent
+      target.loading = false
+      scrollToBottom()
+    }
+    const scheduleRender = () => {
+      if (renderScheduled) return
+      renderScheduled = true
+      setTimeout(() => {
+        renderScheduled = false
+        flushRender()
+      }, 150)
+    }
 
     // 处理接收到的消息
     eventSource.onmessage = function (event) {
@@ -511,9 +700,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         // 拼接内容
         if (content !== undefined && content !== null) {
           fullContent += content
-          messages.value[aiMessageIndex].content = fullContent
-          messages.value[aiMessageIndex].loading = false
-          scrollToBottom()
+          scheduleRender()
         }
       } catch (error) {
         console.error('解析消息失败:', error)
@@ -527,7 +714,9 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
 
       streamCompleted = true
       isGenerating.value = false
+      flushRender()
       eventSource?.close()
+      activeEventSource = null
 
       // 延迟更新预览，确保后端已完成处理
       setTimeout(async () => {
@@ -553,6 +742,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         streamCompleted = true
         isGenerating.value = false
         eventSource?.close()
+        activeEventSource = null
       } catch (parseError) {
         console.error('解析错误事件失败:', parseError, '原始数据:', event.data)
         handleError(new Error('服务器返回错误'), aiMessageIndex)
@@ -566,7 +756,9 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
       if (eventSource?.readyState === EventSource.CONNECTING) {
         streamCompleted = true
         isGenerating.value = false
+        flushRender()
         eventSource?.close()
+        activeEventSource = null
 
         setTimeout(async () => {
           await fetchAppInfo()
@@ -595,7 +787,11 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
 const updatePreview = () => {
   if (appId.value) {
     const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    const newPreviewUrl = getStaticPreviewUrl(codeGenType, appId.value)
+    const newPreviewUrl = getStaticPreviewUrl(
+      codeGenType,
+      String(appId.value),
+      appInfo.value?.currentVersion,
+    )
     previewUrl.value = newPreviewUrl
     previewReady.value = true
   }
@@ -663,6 +859,7 @@ const deployApp = async () => {
       deployUrl.value = res.data.data
       deployModalVisible.value = true
       message.success('部署成功')
+      await fetchAppInfo()
     } else {
       message.error('部署失败：' + res.data.message)
     }
@@ -765,17 +962,25 @@ onMounted(() => {
 
 // 清理资源
 onUnmounted(() => {
-  // EventSource 会在组件卸载时自动清理
+  // EventSource 不会随组件卸载自动关闭，必须显式 close
+  activeEventSource?.close()
+  activeEventSource = null
 })
 </script>
 
 <style scoped>
 #appChatPage {
-  height: 100vh;
+  /* 固定视口高度（扣除顶部导航与页脚），消息增多时内部滚动，页面不被撑长 */
+  height: calc(100vh - 115px);
   display: flex;
   flex-direction: column;
-  padding: 16px;
-  background: #fdfdfd;
+  padding: 16px 24px;
+}
+
+@supports (height: 100dvh) {
+  #appChatPage {
+    height: calc(100dvh - 115px);
+  }
 }
 
 /* 顶部栏 */
@@ -783,7 +988,11 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 16px;
+  padding: 12px 18px;
+  border: 1px solid rgba(157, 173, 222, 0.14);
+  border-radius: 16px;
+  background: rgba(16, 25, 50, 0.42);
+  backdrop-filter: blur(10px);
 }
 
 .header-left {
@@ -796,11 +1005,35 @@ onUnmounted(() => {
   font-size: 12px;
 }
 
+.version-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 8px;
+  border-bottom: 1px solid rgba(157, 173, 222, 0.14);
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-no {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.version-time {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
 .app-name {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--text);
 }
 
 .header-right {
@@ -811,6 +1044,7 @@ onUnmounted(() => {
 /* 主要内容区域 */
 .main-content {
   flex: 1;
+  min-height: 0;
   display: flex;
   gap: 16px;
   padding: 8px;
@@ -820,16 +1054,19 @@ onUnmounted(() => {
 /* 左侧对话区域 */
 .chat-section {
   flex: 2;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(157, 173, 222, 0.14);
+  border-radius: 16px;
+  background: rgba(13, 20, 42, 0.42);
+  backdrop-filter: blur(10px);
   overflow: hidden;
 }
 
 .messages-container {
   flex: 0.9;
+  min-height: 0;
   padding: 16px;
   overflow-y: auto;
   scroll-behavior: smooth;
@@ -856,20 +1093,90 @@ onUnmounted(() => {
 .message-content {
   max-width: 70%;
   padding: 12px 16px;
-  border-radius: 12px;
-  line-height: 1.5;
+  border: 1px solid rgba(138, 166, 232, 0.26);
+  border-radius: 5px 17px 17px 17px;
+  background: rgba(20, 30, 58, 0.85);
+  backdrop-filter: blur(8px);
+  color: #f0f4ff;
+  font-size: 14px;
+  line-height: 1.9;
   word-wrap: break-word;
 }
 
 .user-message .message-content {
-  background: #1890ff;
-  color: white;
+  border-color: rgba(196, 156, 255, 0.38);
+  border-radius: 17px 5px 17px 17px;
+  background: rgba(58, 44, 110, 0.85);
+  color: #ffffff;
 }
 
 .ai-message .message-content {
-  background: #f5f5f5;
-  color: #1a1a1a;
-  padding: 8px 12px;
+  padding: 10px 14px;
+}
+
+.ai-message .message-content :deep(code) {
+  color: #c3a6ff;
+}
+
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+}
+
+.thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.thinking-dots b {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #b9c8ff;
+  box-shadow: 0 0 8px rgba(142, 166, 255, 0.55);
+  animation: think-blink 1.2s infinite ease-in-out;
+}
+
+.thinking-dots b:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.thinking-dots b:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes think-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.stop-btn {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  font-size: 14px;
+}
+
+.messages-container {
+  /* 隐藏滚动条：仅保留滚轮 / 触控板滚动 */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.messages-container::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .message-avatar {
@@ -880,7 +1187,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #666;
+  color: var(--text-dim);
 }
 
 /* 加载更多按钮 */
@@ -892,16 +1199,32 @@ onUnmounted(() => {
 
 /* 输入区域 */
 .input-container {
-  padding: 16px;
-  background: white;
+  padding: 12px 16px 16px;
+  background: transparent;
 }
 
 .input-wrapper {
   position: relative;
 }
 
-.input-wrapper .ant-input {
+.input-wrapper :deep(.ant-input) {
   padding-right: 50px;
+  background: rgba(17, 26, 49, 0.42);
+  border: 1px solid rgba(175, 190, 225, 0.28);
+  border-radius: 14px;
+  color: #f2f5ff;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.input-wrapper :deep(.ant-input::-webkit-scrollbar) {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.input-wrapper :deep(.ant-input::placeholder) {
+  color: #7987a7;
 }
 
 .input-actions {
@@ -913,11 +1236,13 @@ onUnmounted(() => {
 /* 右侧预览区域 */
 .preview-section {
   flex: 3;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(157, 173, 222, 0.14);
+  border-radius: 16px;
+  background: rgba(13, 20, 42, 0.42);
+  backdrop-filter: blur(10px);
   overflow: hidden;
 }
 
@@ -926,7 +1251,7 @@ onUnmounted(() => {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  border-bottom: 1px solid #e8e8e8;
+  border-bottom: 1px solid rgba(157, 173, 222, 0.14);
 }
 
 .preview-header h3 {
@@ -942,6 +1267,7 @@ onUnmounted(() => {
 
 .preview-content {
   flex: 1;
+  min-height: 0;
   position: relative;
   overflow: hidden;
 }
@@ -952,7 +1278,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #666;
+  color: var(--text-faint);
 }
 
 .placeholder-icon {
@@ -966,7 +1292,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   height: 100%;
-  color: #666;
+  color: var(--text-faint);
 }
 
 .preview-loading p {
@@ -1044,7 +1370,7 @@ onUnmounted(() => {
     font-family: 'Monaco', 'Menlo', monospace;
     font-size: 14px;
     font-weight: 600;
-    color: #007bff;
+    color: #8fd8ff;
   }
 
   .element-id {
@@ -1059,12 +1385,12 @@ onUnmounted(() => {
 
   .element-selector-code {
     font-family: 'Monaco', 'Menlo', monospace;
-    background: #f6f8fa;
+    background: rgba(9, 17, 39, 0.5);
     padding: 2px 4px;
     border-radius: 3px;
     font-size: 12px;
-    color: #d73a49;
-    border: 1px solid #e1e4e8;
+    color: #ffb0bc;
+    border: 1px solid rgba(168, 186, 235, 0.24);
   }
 
   /* 编辑模式按钮样式 */

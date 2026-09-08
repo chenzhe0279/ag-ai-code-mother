@@ -180,3 +180,68 @@ export async function updateApp(body: API.AppUpdateRequest, options?: { [key: st
     ...(options || {}),
   })
 }
+
+/** 查看应用的历史版本号列表 GET /app/version/list */
+export async function listAppVersions(
+  params: API.listAppVersionsParams,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseAppVersionVOList>('/app/version/list', {
+    method: 'GET',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}
+
+/** 回退应用版本 POST /app/version/rollback */
+export async function rollbackApp(
+  body: API.rollbackAppParams,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseInteger>('/app/version/rollback', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  })
+}
+
+/** 置顶应用 POST /app/pin */
+export async function pinApp(params: API.pinAppParams, options?: { [key: string]: any }) {
+  return request<API.BaseResponseBoolean>('/app/pin', {
+    method: 'POST',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}
+
+/** 取消置顶 POST /app/unpin */
+export async function unpinApp(params: API.unpinAppParams, options?: { [key: string]: any }) {
+  return request<API.BaseResponseBoolean>('/app/unpin', {
+    method: 'POST',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}
+
+/** 下线应用 POST /app/undeploy */
+export async function undeployApp(
+  params: API.undeployAppParams,
+  options?: { [key: string]: any }
+) {
+  return request<API.BaseResponseBoolean>('/app/undeploy', {
+    method: 'POST',
+    params: {
+      ...params,
+    },
+    ...(options || {}),
+  })
+}

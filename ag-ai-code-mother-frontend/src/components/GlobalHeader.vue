@@ -1,49 +1,52 @@
 <template>
-  <a-layout-header class="header">
-    <a-row :wrap="false">
-      <!-- 左侧：Logo和标题 -->
-      <a-col flex="200px">
-        <RouterLink to="/">
-          <div class="header-left">
-            <img class="logo" src="@/assets/logo.png" alt="Logo" />
-            <h1 class="site-title">鱼皮应用生成</h1>
-          </div>
-        </RouterLink>
-      </a-col>
+  <a-layout-header class="header reveal" style="--rd: 240ms">
+    <div class="site-nav">
+      <!-- 左侧：品牌区 -->
+      <RouterLink to="/" class="brand">
+        <span class="brand-mark">✦</span>
+        <span class="brand-name">AI 零码</span>
+        <small>AI SPACE</small>
+      </RouterLink>
       <!-- 中间：导航菜单 -->
-      <a-col flex="auto">
-        <a-menu
-          v-model:selectedKeys="selectedKeys"
-          mode="horizontal"
-          :items="menuItems"
-          @click="handleMenuClick"
-        />
-      </a-col>
+      <a-menu
+        v-model:selectedKeys="selectedKeys"
+        class="nav-menu"
+        mode="horizontal"
+        :items="menuItems"
+        @click="handleMenuClick"
+      />
       <!-- 右侧：用户操作区域 -->
-      <a-col>
-        <div class="user-login-status">
-          <div v-if="loginUserStore.loginUser.id">
-            <a-dropdown>
-              <a-space>
-                <a-avatar :src="loginUserStore.loginUser.userAvatar" />
-                {{ loginUserStore.loginUser.userName ?? '无名' }}
-              </a-space>
-              <template #overlay>
-                <a-menu>
-                  <a-menu-item @click="doLogout">
-                    <LogoutOutlined />
-                    退出登录
-                  </a-menu-item>
-                </a-menu>
-              </template>
-            </a-dropdown>
-          </div>
-          <div v-else>
-            <a-button type="primary" href="/user/login">登录</a-button>
-          </div>
-        </div>
-      </a-col>
-    </a-row>
+      <div class="nav-user">
+        <template v-if="loginUserStore.loginUser.id">
+          <a-dropdown>
+            <button class="nav-chip" type="button">
+              <span class="nav-chip-avatar">
+                <img
+                  v-if="loginUserStore.loginUser.userAvatar"
+                  :src="loginUserStore.loginUser.userAvatar"
+                  alt=""
+                />
+                <span v-else>{{ (loginUserStore.loginUser.userName ?? '无')[0] }}</span>
+              </span>
+              <span>{{ loginUserStore.loginUser.userName ?? '无名' }}</span>
+              <em v-if="loginUserStore.loginUser.userRole === 'admin'">admin</em>
+            </button>
+            <template #overlay>
+              <a-menu>
+                <a-menu-item key="logout" @click="doLogout">
+                  <LogoutOutlined />
+                  退出登录
+                </a-menu-item>
+              </a-menu>
+            </template>
+          </a-dropdown>
+        </template>
+        <template v-else>
+          <a-button class="nav-link-btn" href="/user/login">登录</a-button>
+          <a-button class="nav-link-btn primary" href="/user/register">注册</a-button>
+        </template>
+      </div>
+    </div>
   </a-layout-header>
 </template>
 
@@ -60,7 +63,7 @@ const router = useRouter()
 // 当前选中菜单
 const selectedKeys = ref<string[]>(['/'])
 // 监听路由变化，更新当前选中菜单
-router.afterEach((to, from, next) => {
+router.afterEach((to) => {
   selectedKeys.value = [to.path]
 })
 
@@ -81,11 +84,6 @@ const originItems = [
     key: '/admin/appManage',
     label: '应用管理',
     title: '应用管理',
-  },
-  {
-    key: 'others',
-    label: h('a', { href: 'https://www.codefather.cn', target: '_blank' }, '编程导航'),
-    title: '编程导航',
   },
 ]
 
@@ -133,28 +131,140 @@ const doLogout = async () => {
 
 <style scoped>
 .header {
-  background: #fff;
-  padding: 0 24px;
-}
-
-.header-left {
+  padding: 0 31px;
+  min-height: 64px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  line-height: normal;
 }
 
-.logo {
-  height: 48px;
-  width: 48px;
+.site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  width: 100%;
 }
 
-.site-title {
-  margin: 0;
-  font-size: 18px;
-  color: #1890ff;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 13px 'DM Mono', monospace;
+  letter-spacing: 0.13em;
+  color: var(--text);
+  white-space: nowrap;
 }
 
-.ant-menu-horizontal {
-  border-bottom: none !important;
+.brand-mark {
+  font-size: 20px;
+  color: #e0e8ff;
+  text-shadow: 0 0 22px #91b0ff;
+  animation: brand-pulse 3.6s ease-in-out infinite;
+}
+
+@keyframes brand-pulse {
+  50% {
+    text-shadow: 0 0 34px #c3a6ff;
+    transform: scale(1.08);
+  }
+}
+
+.brand-name {
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+
+.brand small {
+  color: #8294c4;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+
+.nav-menu {
+  flex: 1;
+  min-width: 0;
+  justify-content: center;
+}
+
+.nav-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.nav-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(164, 184, 232, 0.23);
+  border-radius: 12px;
+  padding: 4px 12px 4px 6px;
+  background: rgba(17, 26, 49, 0.32);
+  color: #e3e9fb;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.2s;
+  backdrop-filter: blur(8px);
+}
+
+.nav-chip:hover {
+  border-color: rgba(185, 204, 255, 0.6);
+}
+
+.nav-chip-avatar {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  overflow: hidden;
+  border-radius: 9px;
+  background: var(--grad-btn);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.nav-chip-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.nav-chip em {
+  font-style: normal;
+  font-size: 10px;
+  color: #c9b2ff;
+}
+
+.nav-link-btn {
+  border: 1px solid rgba(164, 184, 232, 0.23);
+  background: rgba(17, 26, 49, 0.32);
+  color: #cdd8f5;
+  backdrop-filter: blur(8px);
+}
+
+.nav-link-btn.primary {
+  background: linear-gradient(
+    135deg,
+    rgba(142, 162, 255, 0.35),
+    rgba(109, 124, 255, 0.3) 48%,
+    rgba(165, 95, 224, 0.35)
+  );
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 5px 18px rgba(109, 124, 255, 0.2);
+}
+
+@media (max-width: 780px) {
+  .header {
+    padding: 0 16px;
+  }
+  .brand small {
+    display: none;
+  }
 }
 </style>

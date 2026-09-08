@@ -19,6 +19,8 @@ import GlobalFooter from '@/components/GlobalFooter.vue'
 <style scoped>
 .basic-layout {
   background: none;
+  position: relative;
+  z-index: 1;
 }
 
 .main-content {

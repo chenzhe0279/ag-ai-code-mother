@@ -1,0 +1,198 @@
+/* ============================================================
+   全局主题：深空极光（对齐 cz-ai-agent 视觉体系）
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono&family=Noto+Sans+SC:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+
+:root {
+  --ink: #04060f;
+  --panel: rgba(16, 23, 48, 0.72);
+  --panel-strong: rgba(13, 19, 42, 0.9);
+  --line: rgba(168, 186, 235, 0.22);
+  --line-soft: rgba(168, 186, 235, 0.14);
+  --text: #edf1ff;
+  --text-dim: #aab5d3;
+  --text-faint: #7181ac;
+  --accent: #8f9dff;
+  --accent-2: #6d7cff;
+  --accent-3: #b06ee0;
+  --teal: #33d9b2;
+  --gold: #f4d03f;
+  --grad: linear-gradient(135deg, #9d8bff, #6d7cff 52%, #b06ee0);
+  --grad-btn: linear-gradient(135deg, #8ea2ff, #6d7cff 48%, #a55fe0);
+}
+
+body {
+  background: var(--ink);
+  color: var(--text);
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  min-height: 100vh;
+}
+
+/* ================= 全局深空装饰层 =================
+   说明：装饰层样式保留备用；当前由 BackgroundSwitcher 的四套动态背景
+   （图片 Ken Burns / 视频）作为全站视觉主角，参考项目最终同样隐藏了装饰层。 */
+.cosmic-decor {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.cosmic-stars {
+  position: absolute;
+  inset: 0;
+  background-image:
+    radial-gradient(#c8d6ff 1px, transparent 1px),
+    radial-gradient(#fff 1px, transparent 1px),
+    radial-gradient(ellipse at 20% 85%, rgba(52, 100, 202, 0.36) 0, transparent 40%);
+  background-size: 83px 83px, 137px 137px, auto;
+  background-position: 13px 27px, 49px 8px, 0 0;
+  -webkit-mask-image: linear-gradient(#000, transparent 95%);
+  mask-image: linear-gradient(#000, transparent 95%);
+}
+.cosmic-stars i {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 10px #dce7ff;
+  animation: twinkle 4s ease-in-out infinite;
+}
+.cosmic-stars i:nth-child(3n) { opacity: 0.4; }
+.cosmic-stars i:nth-child(2n) { left: 75%; }
+.cosmic-stars i:nth-child(3n + 1) { left: 42%; top: 34%; }
+.cosmic-stars i:nth-child(5n) { left: 18%; top: 58%; }
+.cosmic-stars i:nth-child(7n) { left: 88%; top: 18%; }
+.cosmic-stars i:nth-child(4n) { top: 72%; }
+@keyframes twinkle {
+  50% { opacity: 0.25; transform: scale(0.5); }
+}
+.cosmic-aurora {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.aurora {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.aurora-a {
+  width: 640px;
+  height: 460px;
+  left: -12%;
+  top: -16%;
+  background: radial-gradient(circle, rgba(86, 104, 255, 0.55), rgba(46, 31, 122, 0.18) 58%, transparent 74%);
+  animation: aurora-drift-a 17s ease-in-out infinite alternate;
+}
+.aurora-b {
+  width: 560px;
+  height: 420px;
+  right: -10%;
+  top: 22%;
+  background: radial-gradient(circle, rgba(176, 110, 224, 0.42), rgba(98, 44, 166, 0.14) 60%, transparent 76%);
+  animation: aurora-drift-b 21s ease-in-out infinite alternate;
+}
+.aurora-c {
+  width: 520px;
+  height: 380px;
+  left: 22%;
+  bottom: -22%;
+  background: radial-gradient(circle, rgba(51, 217, 178, 0.26), rgba(19, 128, 118, 0.1) 58%, transparent 76%);
+  animation: aurora-drift-c 19s ease-in-out infinite alternate;
+}
+@keyframes aurora-drift-a {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(90px, 60px, 0) scale(1.16); }
+}
+@keyframes aurora-drift-b {
+  from { transform: translate3d(0, 0, 0) scale(1.08); }
+  to { transform: translate3d(-80px, -50px, 0) scale(0.94); }
+}
+@keyframes aurora-drift-c {
+  from { transform: translate3d(0, 0, 0) scale(0.94); }
+  to { transform: translate3d(70px, -60px, 0) scale(1.14); }
+}
+.cosmic-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(115deg, rgba(158, 178, 255, 0.055) 0 1px, transparent 1px 68px),
+    repeating-linear-gradient(25deg, rgba(158, 178, 255, 0.04) 0 1px, transparent 1px 68px);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 78%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 78%);
+}
+
+/* ================= 通用元素 ================= */
+.eyebrow {
+  margin: 0 0 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #c0adff;
+  font: 10px 'DM Mono', monospace;
+  letter-spacing: 0.12em;
+}
+.eyebrow::before {
+  content: '';
+  width: 26px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #c0adff);
+}
+
+.glass-panel {
+  border: 1px solid rgba(168, 186, 235, 0.22);
+  border-radius: 16px;
+  background: rgba(15, 23, 48, 0.06);
+  backdrop-filter: blur(10px);
+}
+
+/* ================= 入场显现动画 ================= */
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+    filter: blur(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+.reveal {
+  animation: reveal-up 1s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
+  animation-delay: var(--rd, 0ms);
+  will-change: opacity, transform, filter;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+  }
+}
+
+/* ================= Ant Design 深色适配补充 ================= */
+/* 菜单与头部融入深空背景 */
+.ant-layout-header {
+  background: transparent !important;
+  border-bottom: 1px solid rgba(157, 173, 222, 0.14);
+  backdrop-filter: blur(10px);
+}
+.basic-layout .ant-menu {
+  background: transparent !important;
+  border-bottom: 0 !important;
+}
+.ant-layout-footer {
+  background: transparent !important;
+}
+/* 表格/卡片透出玻璃质感 */
+.ant-table {
+  background: rgba(13, 20, 42, 0.4) !important;
+}
+.ant-card {
+  border: 1px solid var(--line-soft) !important;
+  background: rgba(14, 22, 48, 0.5) !important;
+  backdrop-filter: blur(10px);
+}

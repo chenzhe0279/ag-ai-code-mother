@@ -1,6 +1,8 @@
 declare namespace API {
   type AppAddRequest = {
     initPrompt?: string
+    tags?: string
+    visibility?: string
   }
 
   type AppAdminUpdateRequest = {
@@ -8,6 +10,7 @@ declare namespace API {
     appName?: string
     cover?: string
     priority?: number
+    visibility?: string
   }
 
   type AppDeployRequest = {
@@ -27,11 +30,17 @@ declare namespace API {
     deployKey?: string
     priority?: number
     userId?: number
+    deployStatus?: string
+    genStatus?: string
+    visibility?: string
+    tagName?: string
   }
 
   type AppUpdateRequest = {
     id?: number
     appName?: string
+    tags?: string
+    visibility?: string
   }
 
   type AppVO = {
@@ -40,18 +49,35 @@ declare namespace API {
     cover?: string
     initPrompt?: string
     codeGenType?: string
+    genStatus?: string
+    currentVersion?: number
     deployKey?: string
     deployedTime?: string
+    deployStatus?: string
     priority?: number
+    visibility?: string
     userId?: number
     createTime?: string
     updateTime?: string
     user?: UserVO
+    tags?: string
+  }
+
+  type AppVersionVO = {
+    version?: number
+    isCurrent?: boolean
+    createTime?: string
   }
 
   type BaseResponseAppVO = {
     code?: number
     data?: AppVO
+    message?: string
+  }
+
+  type BaseResponseAppVersionVOList = {
+    code?: number
+    data?: AppVersionVO[]
     message?: string
   }
 
@@ -68,6 +94,12 @@ declare namespace API {
   }
 
   type BaseResponseLong = {
+    code?: number
+    data?: number
+    message?: string
+  }
+
+  type BaseResponseInteger = {
     code?: number
     data?: number
     message?: string
@@ -152,6 +184,27 @@ declare namespace API {
 
   type getAppVOByIdParams = {
     id: number
+  }
+
+  type listAppVersionsParams = {
+    appId: number
+  }
+
+  type rollbackAppParams = {
+    appId: number
+    targetVersion: number
+  }
+
+  type pinAppParams = {
+    appId: number
+  }
+
+  type unpinAppParams = {
+    appId: number
+  }
+
+  type undeployAppParams = {
+    appId: number
   }
 
   type getUserByIdParams = {

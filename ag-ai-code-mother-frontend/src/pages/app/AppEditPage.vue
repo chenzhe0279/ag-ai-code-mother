@@ -60,6 +60,22 @@
             <div class="form-tip">初始提示词不可修改</div>
           </a-form-item>
 
+          <a-form-item label="可见范围" name="visibility">
+            <a-radio-group v-model:value="formData.visibility">
+              <a-radio value="public">公开</a-radio>
+              <a-radio value="private">私有</a-radio>
+            </a-radio-group>
+          </a-form-item>
+
+          <a-form-item
+            v-if="isOwner"
+            label="应用标签"
+            name="tags"
+            extra="最多 3 个标签，用英文逗号分隔"
+          >
+            <a-input v-model:value="formData.tags" placeholder="例如：游戏,工具" :maxlength="70" />
+          </a-form-item>
+
           <a-form-item label="生成类型" name="codeGenType">
             <a-input
               :value="formatCodeGenType(formData.codeGenType)"
@@ -104,6 +120,27 @@
           <a-descriptions-item label="部署时间">
             {{ appInfo?.deployedTime ? formatTime(appInfo.deployedTime) : '未部署' }}
           </a-descriptions-item>
+          <a-descriptions-item label="部署状态">
+            <a-tag v-if="!appInfo?.deployKey">未部署</a-tag>
+            <a-tag v-else-if="appInfo?.deployStatus === 'online'" color="success">已上线</a-tag>
+            <a-tag v-else>已下线</a-tag>
+          </a-descriptions-item>
+          <a-descriptions-item label="可见范围">
+            <a-tag v-if="appInfo?.visibility === 'private'" color="orange">私有</a-tag>
+            <a-tag v-else color="green">公开</a-tag>
+          </a-descriptions-item>
+          <a-descriptions-item label="当前版本">
+            {{ appInfo?.currentVersion ? `v${appInfo.currentVersion}` : '-' }}
+          </a-descriptions-item>
+          <a-descriptions-item label="生成状态">
+            {{ formatGenStatus(appInfo?.genStatus) }}
+          </a-descriptions-item>
+          <a-descriptions-item label="应用标签" :span="2">
+            <template v-if="tagList.length">
+              <a-tag v-for="tag in tagList" :key="tag" color="blue">{{ tag }}</a-tag>
+            </template>
+            <span v-else>-</span>
+          </a-descriptions-item>
           <a-descriptions-item label="访问链接">
             <a-button v-if="appInfo?.deployKey" type="link" @click="openPreview" size="small">
               查看预览
@@ -146,12 +183,33 @@ const formData = reactive({
   initPrompt: '',
   codeGenType: '',
   deployKey: '',
+  visibility: 'public' as string,
+  tags: '',
 })
 
 // 是否为管理员
 const isAdmin = computed(() => {
   return loginUserStore.loginUser.userRole === 'admin'
 })
+
+const isOwner = computed(() => {
+  return appInfo.value?.userId === loginUserStore.loginUser.id
+})
+
+const tagList = computed(() => {
+  if (!formData.tags) return []
+  return formData.tags.split(',').filter(Boolean)
+})
+
+const formatGenStatus = (status?: string) => {
+  const map: Record<string, string> = {
+    not_start: '未开始',
+    generating: '生成中',
+    succeeded: '生成成功',
+    failed: '生成失败',
+  }
+  return status ? map[status] || status : '-'
+}
 
 // 表单验证规则
 const rules = {
@@ -192,6 +250,8 @@ const fetchAppInfo = async () => {
       formData.initPrompt = appInfo.value.initPrompt || ''
       formData.codeGenType = appInfo.value.codeGenType || ''
       formData.deployKey = appInfo.value.deployKey || ''
+      formData.visibility = appInfo.value.visibility || 'public'
+      formData.tags = appInfo.value.tags || ''
     } else {
       message.error('获取应用信息失败')
       router.push('/')
@@ -219,12 +279,22 @@ const handleSubmit = async () => {
         appName: formData.appName,
         cover: formData.cover,
         priority: formData.priority,
+        visibility: formData.visibility,
       })
+      // 管理员同时是创建者时，标签走用户更新接口单独保存
+      if (res.data.code === 0 && isOwner.value) {
+        await updateApp({
+          id: appInfo.value.id,
+          tags: formData.tags,
+        })
+      }
     } else {
       // 普通用户只能修改应用名称
       res = await updateApp({
         id: appInfo.value.id,
         appName: formData.appName,
+        visibility: formData.visibility,
+        tags: formData.tags,
       })
     }
 
@@ -249,6 +319,8 @@ const resetForm = () => {
     formData.appName = appInfo.value.appName || ''
     formData.cover = appInfo.value.cover || ''
     formData.priority = appInfo.value.priority || 0
+    formData.visibility = appInfo.value.visibility || 'public'
+    formData.tags = appInfo.value.tags || ''
   }
   formRef.value?.clearValidate()
 }
@@ -263,7 +335,11 @@ const goToChat = () => {
 // 打开预览
 const openPreview = () => {
   if (appInfo.value?.codeGenType && appInfo.value?.id) {
-    const url = getStaticPreviewUrl(appInfo.value.codeGenType, String(appInfo.value.id))
+    const url = getStaticPreviewUrl(
+      appInfo.value.codeGenType,
+      String(appInfo.value.id),
+      appInfo.value.currentVersion,
+    )
     window.open(url, '_blank')
   }
 }

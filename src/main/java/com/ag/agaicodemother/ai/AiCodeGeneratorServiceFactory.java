@@ -55,6 +55,7 @@ public class AiCodeGeneratorServiceFactory {
      * 根据 appId 获取服务（带缓存）
      */
     public AiCodeGeneratorService getAiCodeGeneratorService(long appId) {
+        //返回与 key 关联的值，如果不存在则通过 mappingFunction 计算并缓存后返回
         return serviceCache.get(appId, this::createAiCodeGeneratorService);
     }
 
