@@ -1,15 +1,22 @@
 package com.ag.agaicodemother.core;
 
 
+import cn.hutool.json.JSONUtil;
 import com.ag.agaicodemother.ai.AiCodeGeneratorService;
 import com.ag.agaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.ag.agaicodemother.ai.model.HtmlCodeResult;
 import com.ag.agaicodemother.ai.model.MultiFileCodeResult;
+import com.ag.agaicodemother.ai.model.message.AiResponseMessage;
+import com.ag.agaicodemother.ai.model.message.ToolExecutedMessage;
+import com.ag.agaicodemother.ai.model.message.ToolRequestMessage;
 import com.ag.agaicodemother.core.parser.CodeParserExecutor;
 import com.ag.agaicodemother.core.saver.CodeFileSaverExecutor;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
+import dev.langchain4j.service.TokenStream;
+import dev.langchain4j.model.chat.response.ChatResponse;
+import dev.langchain4j.service.tool.ToolExecution;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -96,9 +103,9 @@ public class AiCodeGeneratorFacade {
             }
             case VUE_PROJECT -> {
                 // 获取多文件代码流
-                Flux<String> codeStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId,userMessage);
+                TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId,userMessage);
                 // 交给通用流式处理方法，带上版本号
-                yield codeStream;
+                yield processTokenStream(tokenStream);
             }
             default -> {
                 // 不支持的生成类型
@@ -107,6 +114,57 @@ public class AiCodeGeneratorFacade {
             }
         };
     }
+
+    /**
+     * 将 TokenStream 转换为 Flux<String>，并传递工具调用信息
+     *
+     * @param tokenStream TokenStream 对象
+     * @return Flux<String> 流式响应
+     */
+    private Flux<String> processTokenStream(TokenStream tokenStream) {
+        return Flux.create(sink -> {
+            tokenStream
+                // 注册流式部分响应回调：模型每生成一个文本片段就会触发一次
+                .onPartialResponse((String partialResponse) -> {
+                    // 将本次返回的文本片段封装为统一的 AI 响应消息对象
+                    AiResponseMessage aiResponseMessage = new AiResponseMessage(partialResponse);
+                    // 将消息对象转换为 JSON 字符串，再通过 sink 推送给下游订阅者
+                    sink.next(JSONUtil.toJsonStr(aiResponseMessage));
+                })
+                // 注册工具调用请求回调：模型请求调用某个工具时触发
+                // index 为工具调用序号，toolExecutionRequest 是工具调用的请求信息（工具名、参数等）
+                .onPartialToolExecutionRequest((index, toolExecutionRequest) -> {
+                    // 将工具调用请求包装为工具请求消息，便于前端按事件类型解析
+                    ToolRequestMessage toolRequestMessage = new ToolRequestMessage(toolExecutionRequest);
+                    // 将工具请求消息序列化为 JSON 字符串并推送出去
+                    sink.next(JSONUtil.toJsonStr(toolRequestMessage));
+                })
+                // 注册工具执行完成回调：模型调用的工具执行完毕后触发
+                // toolExecution 中携带工具实际执行结果，可直接序列化后通知前端
+                .onToolExecuted((ToolExecution toolExecution) -> {
+                    // 包装工具执行结果，统一消息结构，便于前端识别工具执行完成事件
+                    ToolExecutedMessage toolExecutedMessage = new ToolExecutedMessage(toolExecution);
+                    // 将执行结果序列化为 JSON 字符串，通过 sink 发送给下游
+                    sink.next(JSONUtil.toJsonStr(toolExecutedMessage));
+                })
+                // 注册完整响应完成回调：整个 AI 响应生命周期正常结束时触发一次
+                .onCompleteResponse((ChatResponse response) -> {
+                    // response 为完整聊天响应对象，此处无需再向下游传内容
+                    // 主动调用 complete 结束 Flux，通知前端流式响应已正常完成
+                    sink.complete();
+                })
+                // 注册错误回调：流式输出、工具调用等任意环节出错时触发
+                .onError((Throwable error) -> {
+                    // 打印原始异常堆栈，方便服务端开发人员定位具体问题
+                    error.printStackTrace();
+                    // 将异常传递给 sink，让当前 Flux 以错误信号结束，外层可统一处理失败状态
+                    sink.error(error);
+                })
+                // 开始订阅并触发整个 TokenStream：只有调用 start 后上面注册的回调才会实际执行
+                .start();
+        });
+    }
+
 
     /**
      * 通用流式代码处理方法

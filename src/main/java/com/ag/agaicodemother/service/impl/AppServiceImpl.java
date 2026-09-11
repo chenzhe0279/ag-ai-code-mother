@@ -9,6 +9,7 @@ import com.ag.agaicodemother.ai.AiCodeGeneratorService;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.constant.UserConstant;
 import com.ag.agaicodemother.core.AiCodeGeneratorFacade;
+import com.ag.agaicodemother.core.handler.StreamHandlerExecutor;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
 import com.ag.agaicodemother.exception.ThrowUtils;
@@ -66,6 +67,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
     @Resource
     private ChatHistoryService chatHistoryService;
 
+    @Resource
+    private StreamHandlerExecutor streamHandlerExecutor;
+
     /** 预编译正则：匹配版本目录名 v1、v2、v10...（v 后必须全为数字，防止误匹配其他目录） */
     private static final Pattern VERSION_DIR_PATTERN = Pattern.compile("^v(\\d+)$");
 
@@ -107,29 +111,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
         //6调用AI大模型生成代码
         //return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId ,nextVersion);
-        Flux<String> codeFlux = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId, nextVersion);
-        //定义一个StringBuilder，来保存AI的回复内容
-        StringBuilder aiStrMessage = new StringBuilder();
-        return codeFlux
-                .map(codeChunk -> {
-                    aiStrMessage.append(codeChunk);
-                    return codeChunk;
-                })
-                // 流正常结束（此时文件已在 Facade 的 doOnComplete 中保存完毕）后置为已成功
-                .doOnComplete(() -> {
-                    String aiResponse = aiStrMessage.toString();
-                    chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-                    updateGenStatus(appId, AppGenStatusEnum.SUCCEEDED);
-                })
-                // 流异常时置为失败，并保留错误日志方便排查
-                .doOnError(error -> {
-                    log.error("AI 代码生成失败, appId={}", appId, error);
-                    String aiErrorMessage = "AI回复失败：" + error.getMessage();
-                    chatHistoryService.addChatMessage(appId, aiErrorMessage, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
-                    updateGenStatus(appId, AppGenStatusEnum.FAILED);
-                })
-                // 客户端中途关页面/断开 SSE 也视为失败，避免状态永远卡在生成中
-                .doOnCancel(() -> updateGenStatus(appId, AppGenStatusEnum.FAILED));
+        Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId, nextVersion);
+        //调用代码解析执行器
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
     }
 
     /**

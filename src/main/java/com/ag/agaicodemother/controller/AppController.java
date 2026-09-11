@@ -129,7 +129,7 @@ public class AppController {
         // 调用大模型根据初始描述自动生成应用名称（失败时兜底为 initPrompt 前 12 位）
         app.setAppName(appService.generateAppNameByAi(initPrompt));
         // 暂时设置为多文件生成
-        app.setCodeGenType(CodeGenTypeEnum.MULTI_FILE.getValue());
+        app.setCodeGenType(CodeGenTypeEnum.VUE_PROJECT.getValue());
         // ==================== 可见范围处理 ====================
         String visibility = appAddRequest.getVisibility();
         if (StrUtil.isBlank(visibility)) {
