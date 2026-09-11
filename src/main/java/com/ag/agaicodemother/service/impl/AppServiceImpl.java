@@ -9,6 +9,7 @@ import com.ag.agaicodemother.ai.AiCodeGeneratorService;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.constant.UserConstant;
 import com.ag.agaicodemother.core.AiCodeGeneratorFacade;
+import com.ag.agaicodemother.core.builder.VueProjectBuilder;
 import com.ag.agaicodemother.core.handler.StreamHandlerExecutor;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
@@ -70,6 +71,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
     @Resource
     private StreamHandlerExecutor streamHandlerExecutor;
 
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
+
     /** 预编译正则：匹配版本目录名 v1、v2、v10...（v 后必须全为数字，防止误匹配其他目录） */
     private static final Pattern VERSION_DIR_PATTERN = Pattern.compile("^v(\\d+)$");
 
@@ -113,7 +117,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         //return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId ,nextVersion);
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId, nextVersion);
         //调用代码解析执行器
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum);
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum, nextVersion);
     }
 
     /**
@@ -156,14 +160,27 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         if (!sourceDir.exists() || !sourceDir.isDirectory()) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "应用代码不存在，请先生成代码");
         }
-        //7.复制文件到部署目录
+        //7.Vue 项目特殊处理
+        CodeGenTypeEnum enumByValue = CodeGenTypeEnum.getEnumByValue(codeGenType);
+        if(enumByValue == CodeGenTypeEnum.VUE_PROJECT){
+            //Vue 项目构建
+            boolean buildSuccess = vueProjectBuilder.buildProject(sourceDirPath);
+            ThrowUtils.throwIf(!buildSuccess, ErrorCode.SYSTEM_ERROR, "Vue 项目构建失败，请重试");
+            //检查 dist 目录是否存在
+            File distDir = new File(sourceDirPath, "dist");
+            ThrowUtils.throwIf(!distDir.exists() || !distDir.isDirectory(), ErrorCode.SYSTEM_ERROR, "Vue 项目构建成功但未生成 dist 目录");
+            //将 dist 目录作为部署源
+            sourceDir = distDir;
+            log.info("Vue 项目构建成功，将部署 dist 目录: {}", distDir.getAbsolutePath());
+        }
+        //8.复制文件到部署目录
         String deployDirPath = AppConstant.CODE_DEPLOY_ROOT_DIR + File.separator + deployKey;
         try {
             FileUtil.copyContent(sourceDir, new File(deployDirPath), true);
         } catch (Exception e) {
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "部署失败：" + e.getMessage());
         }
-        // 8. 更新应用的 deployKey、部署时间和部署状态
+        // 9. 更新应用的 deployKey、部署时间和部署状态
         App updateApp = new App();
         updateApp.setId(appId);
         updateApp.setDeployKey(deployKey);
@@ -172,7 +189,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         updateApp.setDeployStatus(AppConstant.APP_DEPLOY_STATUS_ONLINE);
         boolean updateResult = this.updateById(updateApp);
         ThrowUtils.throwIf(!updateResult, ErrorCode.OPERATION_ERROR, "更新应用部署信息失败");
-        // 9. 返回可访问的 URL
+        // 10. 返回可访问的 URL
         return String.format("%s/%s/", AppConstant.CODE_DEPLOY_HOST, deployKey);
     }
 

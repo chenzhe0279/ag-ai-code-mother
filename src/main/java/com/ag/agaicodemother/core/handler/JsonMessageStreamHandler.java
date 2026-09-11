@@ -8,6 +8,8 @@ import com.ag.agaicodemother.ai.model.message.AiResponseMessage;
 import com.ag.agaicodemother.ai.model.message.StreamMessage;
 import com.ag.agaicodemother.ai.model.message.ToolExecutedMessage;
 import com.ag.agaicodemother.ai.model.message.ToolRequestMessage;
+import com.ag.agaicodemother.constant.AppConstant;
+import com.ag.agaicodemother.core.builder.VueProjectBuilder;
 import com.ag.agaicodemother.model.entity.App;
 import com.ag.agaicodemother.model.entity.User;
 import com.ag.agaicodemother.model.enums.AppGenStatusEnum;
@@ -35,6 +37,10 @@ public class JsonMessageStreamHandler {
     @Lazy
     @Resource
     private AppService appService;
+
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
+
     /**
      * 处理 TokenStream（VUE_PROJECT）
      * 解析 JSON 消息并重组为完整的响应格式
@@ -47,7 +53,7 @@ public class JsonMessageStreamHandler {
      */
     public Flux<String> handle(Flux<String> originFlux,
                                ChatHistoryService chatHistoryService,
-                               long appId, User loginUser) {
+                               long appId, User loginUser, Integer version) {
         // 收集数据用于生成后端记忆格式
         StringBuilder chatHistoryStringBuilder = new StringBuilder();
         // 用于跟踪已经见过的工具ID，判断是否是第一次调用
@@ -63,6 +69,8 @@ public class JsonMessageStreamHandler {
                     String aiResponse = chatHistoryStringBuilder.toString();
                     chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                     updateGenStatus(appId, AppGenStatusEnum.SUCCEEDED);
+                    String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/" + AppConstant.CODE_VERSION_DIR_PREFIX + version;
+                    vueProjectBuilder.buildProjectAsync(projectPath);
                 })
                 .doOnError(error -> {
                     // 如果AI回复失败，也要记录错误消息
