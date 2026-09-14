@@ -38,6 +38,14 @@ public interface AppService extends IService<App> {
     String deployApp(Long appId, User loginUser);
 
     /**
+     * 异步生成应用截图并更新封面
+     *
+     * @param appId  应用ID
+     * @param appUrl 应用访问URL
+     */
+    void generateAppScreenshotAsync(Long appId, String appUrl);
+
+    /**
      * 下线应用（部署控制功能新增）
      * 下线 = 删除部署目录文件 + 部署状态置为 offline；
      * deployKey 保留在数据库中，重新部署后 URL 保持不变

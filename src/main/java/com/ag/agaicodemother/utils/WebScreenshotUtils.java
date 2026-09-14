@@ -26,17 +26,30 @@ import java.util.UUID;
 @Slf4j
 public class WebScreenshotUtils {
 
-    private static final WebDriver webDriver;
+    private static final ThreadLocal<WebDriver> driverThreadLocal = new ThreadLocal<>();
 
-    static {
+    private static final int DEFAULT_WIDTH = 1600;
+    private static final int DEFAULT_HEIGHT = 900;
+
+    //private static final WebDriver webDriver;
+
+   /* static {
         final int DEFAULT_WIDTH = 1600;
         final int DEFAULT_HEIGHT = 900;
         webDriver = initChromeDriver(DEFAULT_WIDTH, DEFAULT_HEIGHT);
-    }
+    }*/
 
+    public static WebDriver getDriver() {
+        WebDriver driver = driverThreadLocal.get();
+        if (driver == null) {
+            driver = initChromeDriver(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+            driverThreadLocal.set(driver);
+        }
+        return driver;
+    }
     @PreDestroy
     public void destroy() {
-        webDriver.quit();
+        driverThreadLocal.remove(); // Fixed: Removed unnecessary semicolon
     }
 
     /**
@@ -60,13 +73,13 @@ public class WebScreenshotUtils {
             // 原始截图文件路径
             String imageSavePath = rootPath + File.separator + RandomUtil.randomNumbers(5) + IMAGE_SUFFIX;
             // 访问网页
-            webDriver.get(webUrl);
+            getDriver().get(webUrl);
             // 等待页面加载完成
-            waitForPageLoad(webDriver);
+            waitForPageLoad(getDriver());
             // 截图
             // WebDriver 接口本身没有截图方法；TakesScreenshot 是 Selenium 提供的截图能力接口。
             // 当前 webDriver 实际类型 EdgeDriver 实现了该接口，所以先转型再获取 PNG 字节。
-            TakesScreenshot screenshotDriver = (TakesScreenshot) webDriver;
+            TakesScreenshot screenshotDriver = (TakesScreenshot) getDriver();
             byte[] screenshotBytes = screenshotDriver.getScreenshotAs(OutputType.BYTES);
             // 保存原始图片
             saveImage(screenshotBytes, imageSavePath);
