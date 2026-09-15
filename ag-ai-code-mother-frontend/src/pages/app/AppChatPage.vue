@@ -40,7 +40,7 @@
         <a-button
             type="primary"
             ghost
-            @click="downloadCode"
+            @click="downloadCode()"
             :loading="downloading"
             :disabled="!isOwner"
         >
@@ -261,6 +261,7 @@
           </div>
           <a-space>
             <a-button type="link" size="small" @click="previewVersion(v)">预览</a-button>
+            <a-button type="link" size="small" @click="downloadCode(v.version)">下载</a-button>
             <a-popconfirm
               v-if="!v.isCurrent"
               title="确定回退到该版本吗？"
@@ -804,16 +805,22 @@ const scrollToBottom = () => {
   }
 }
 
-// 下载代码
-const downloadCode = async () => {
+// 下载代码（不传版本时默认下载当前版本）
+const downloadCode = async (version?: number) => {
   if (!appId.value) {
     message.error('应用ID不存在')
+    return
+  }
+  // 后端 download 接口按 version 定位 v{version} 目录，不传会拼成 vnull 导致 404
+  const targetVersion = version ?? appInfo.value?.currentVersion
+  if (!targetVersion) {
+    message.error('应用代码尚未生成，无法下载')
     return
   }
   downloading.value = true
   try {
     const API_BASE_URL = request.defaults.baseURL || ''
-    const url = `${API_BASE_URL}/app/download/${appId.value}`
+    const url = `${API_BASE_URL}/app/download/${appId.value}?version=${targetVersion}`
     const response = await fetch(url, {
       method: 'GET',
       credentials: 'include',
@@ -821,22 +828,33 @@ const downloadCode = async () => {
     if (!response.ok) {
       throw new Error(`下载失败: ${response.status}`)
     }
-    // 获取文件名
+    // 后端业务异常由全局异常处理器返回 HTTP 200 + JSON（BaseResponse），
+    // 所以不能只靠 response.ok 判断，需按 Content-Type 区分 zip 成功体与 JSON 错误体
+    const contentType = response.headers.get('Content-Type') || ''
+    if (contentType.includes('application/json')) {
+      const errorBody = await response.json()
+      throw new Error(errorBody?.message || '下载失败')
+    }
+    // 获取文件名（兼容带引号与不带引号两种 Content-Disposition）
     const contentDisposition = response.headers.get('Content-Disposition')
-    const fileName = contentDisposition?.match(/filename="(.+)"/)?.[1] || `app-${appId.value}.zip`
+    const fileName =
+      contentDisposition?.match(/filename="?([^";]+)"?/)?.[1] ||
+      `app-${appId.value}-v${targetVersion}.zip`
     // 下载文件
     const blob = await response.blob()
     const downloadUrl = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = downloadUrl
     link.download = fileName
+    document.body.appendChild(link)
     link.click()
-    // 清理
-    URL.revokeObjectURL(downloadUrl)
+    document.body.removeChild(link)
+    // 延迟释放 blob URL：立即 revoke 会让部分浏览器来不及开始下载
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000)
     message.success('代码下载成功')
   } catch (error) {
     console.error('下载失败：', error)
-    message.error('下载失败，请重试')
+    message.error(error instanceof Error ? error.message : '下载失败，请重试')
   } finally {
     downloading.value = false
   }

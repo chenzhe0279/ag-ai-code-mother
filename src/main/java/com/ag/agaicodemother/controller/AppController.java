@@ -3,6 +3,7 @@ package com.ag.agaicodemother.controller;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
+import com.ag.agaicodemother.ai.AiCodeGenTypeRoutingService;
 import com.ag.agaicodemother.ai.AiCodeGeneratorService;
 import com.ag.agaicodemother.annotation.AuthCheck;
 import com.ag.agaicodemother.common.BaseResponse;
@@ -63,6 +64,8 @@ public class AppController {
     @Resource
     private ProjectDownloadService projectDownloadService;
 
+    @Resource
+    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
     /**
      * 应用聊天生成代码（流式 SSE）
      *
@@ -132,8 +135,9 @@ public class AppController {
         app.setUserId(loginUser.getId());
         // 调用大模型根据初始描述自动生成应用名称（失败时兜底为 initPrompt 前 12 位）
         app.setAppName(appService.generateAppNameByAi(initPrompt));
-        // 暂时设置为多文件生成
-        app.setCodeGenType(CodeGenTypeEnum.VUE_PROJECT.getValue());
+        //使用 AI 智能选择代码生成类型
+        CodeGenTypeEnum codeGenTypeEnum = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        app.setCodeGenType(codeGenTypeEnum.getValue());
         // ==================== 可见范围处理 ====================
         String visibility = appAddRequest.getVisibility();
         if (StrUtil.isBlank(visibility)) {
@@ -593,12 +597,14 @@ public class AppController {
      * @param response 响应
      */
     @GetMapping("/download/{appId}")
-    public void downloadAppCode(@PathVariable Long appId, HttpServletRequest request, Integer version, HttpServletResponse response) {
+    public void downloadAppCode(@PathVariable Long appId, @RequestParam(required = false) Integer version, HttpServletRequest request , HttpServletResponse response) {
         // 1. 基础校验
         ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID无效");
         // 2. 查询应用信息
         App app = appService.getById(appId);
         ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        Integer targetVersion = version != null ? version : app.getCurrentVersion();
+        ThrowUtils.throwIf(targetVersion == null, ErrorCode.NOT_FOUND_ERROR, "应用代码不存在，请先生成代码");
         // 3. 权限校验：只有应用创建者可以下载代码
         User loginUser = userService.getLoginUser(request);
         if (!app.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
