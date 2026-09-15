@@ -20,11 +20,13 @@ import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import com.ag.agaicodemother.model.enums.AppVisibilityEnum;
 import com.ag.agaicodemother.model.vo.AppVO;
 import com.ag.agaicodemother.model.vo.AppVersionVO;
+import com.ag.agaicodemother.service.ProjectDownloadService;
 import com.ag.agaicodemother.service.UserService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -37,6 +39,7 @@ import com.ag.agaicodemother.service.AppService;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -57,7 +60,8 @@ public class AppController {
     @Resource
     private UserService userService;
 
-
+    @Resource
+    private ProjectDownloadService projectDownloadService;
 
     /**
      * 应用聊天生成代码（流式 SSE）
@@ -582,34 +586,37 @@ public class AppController {
     }
 
     /**
-     * 下载应用代码（下载功能新增）
-     * 把应用当前版本的代码文件打包成 zip 返回给前端下载。
-     * 与其他接口不同，本接口返回 ResponseEntity<byte[]> 附件响应，
-     * 而不是 BaseResponse JSON——因为下载的是二进制文件流，需要设置
-     * Content-Disposition 响应头让浏览器触发"另存为"而不是直接渲染
+     * 下载应用代码
      *
-     * @param appId   要下载代码的应用 id
-     * @param request 请求对象（用于获取登录用户）
-     * @return zip 文件二进制流响应
+     * @param appId    应用ID
+     * @param request  请求
+     * @param response 响应
      */
     @GetMapping("/download/{appId}")
-    public ResponseEntity<byte[]> downloadApp(@PathVariable Long appId, HttpServletRequest request) {
-        // 参数校验：应用 id 必须非空且合法
-        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用 id 不能为空");
-        // 获取当前登录用户（权限校验在服务层进行）
+    public void downloadAppCode(@PathVariable Long appId, HttpServletRequest request, Integer version, HttpServletResponse response) {
+        // 1. 基础校验
+        ThrowUtils.throwIf(appId == null || appId <= 0, ErrorCode.PARAMS_ERROR, "应用ID无效");
+        // 2. 查询应用信息
+        App app = appService.getById(appId);
+        ThrowUtils.throwIf(app == null, ErrorCode.NOT_FOUND_ERROR, "应用不存在");
+        // 3. 权限校验：只有应用创建者可以下载代码
         User loginUser = userService.getLoginUser(request);
-        // 调用服务层把当前版本代码打包为 zip 字节数组
-        byte[] zipBytes = appService.downloadApp(appId, loginUser);
-        // 构建响应头对象，用于承载下载相关的元信息
-        HttpHeaders headers = new HttpHeaders();
-        // 设置媒体类型为通用二进制流（zip 文件类型）
-        headers.setContentType(MediaType.APPLICATION_OCTET_STREAM);
-        // 设置附件下载方式：attachment 让浏览器触发下载弹窗；
-        // 文件名用 app_{appId}_code.zip（纯数字 id，避免中文/特殊字符破坏响应头）
-        headers.setContentDispositionFormData("attachment", "app_" + appId + "_code.zip");
-        // 设置响应体长度，浏览器可据此展示下载进度条
-        headers.setContentLength(zipBytes.length);
-        // 返回 200 响应：携带二进制 zip 数据和下载响应头
-        return new ResponseEntity<>(zipBytes, headers, HttpStatus.OK);
+        if (!app.getUserId().equals(loginUser.getId()) && !UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole())) {
+            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "无权限下载该应用代码");
+        }
+        // 4. 构建应用代码目录路径（生成目录，非部署目录）
+        String codeGenType = app.getCodeGenType();
+        String sourceDirName = codeGenType + "_" + appId;
+        String verSionName = AppConstant.CODE_VERSION_DIR_PREFIX + version;
+        String sourceDirPath = AppConstant.CODE_OUTPUT_ROOT_DIR + File.separator + sourceDirName + File.separator + verSionName;
+        // 5. 检查代码目录是否存在
+        File sourceDir = new File(sourceDirPath);
+        ThrowUtils.throwIf(!sourceDir.exists() || !sourceDir.isDirectory(),
+                ErrorCode.NOT_FOUND_ERROR, "应用代码不存在，请先生成代码");
+        // 6. 生成下载文件名（不建议添加中文内容）
+        String downloadFileName = String.valueOf(appId);
+        // 7. 调用通用下载服务
+        projectDownloadService.downloadProjectAsZip(sourceDirPath, downloadFileName, response);
     }
+
 }

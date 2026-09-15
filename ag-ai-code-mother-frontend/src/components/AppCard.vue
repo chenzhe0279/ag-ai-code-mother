@@ -8,11 +8,20 @@
     @click="handleViewChat"
     @keydown.enter="handleViewChat"
   >
+    <!-- 封面：部署成功后后端异步截图上传 OSS，URL 存于 app.cover -->
+    <img
+      v-if="app.cover && !coverFailed"
+      class="card-cover"
+      :src="app.cover"
+      :alt="app.appName"
+      loading="lazy"
+      @error="coverFailed = true"
+    />
+    <span v-if="app.cover && !coverFailed" class="card-shade" aria-hidden="true"></span>
     <span class="card-slice" aria-hidden="true"></span>
     <span class="card-orbit" aria-hidden="true"></span>
-    <span class="card-icon">{{ cardIcon }}</span>
+    <span v-if="!app.cover || coverFailed" class="card-icon">{{ cardIcon }}</span>
     <span class="card-content">
-      <em>{{ cardTag }}</em>
       <strong>
         {{ app.appName || '未命名应用' }}
         <i v-if="app.visibility === 'private'" class="card-flag private">私有</i>
@@ -49,9 +58,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useLoginUserStore } from '@/stores/loginUser'
-import { formatCodeGenType } from '@/utils/codeGenTypes'
 
 interface Props {
   app: API.AppVO
@@ -71,6 +79,9 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const loginUserStore = useLoginUserStore()
+
+// 封面加载失败时回退到 icon 形态
+const coverFailed = ref(false)
 
 const isPinned = computed(() => props.app.priority === 999)
 
@@ -92,13 +103,6 @@ const cardIcon = computed(() => {
   if (type === 'multi_file') return '◈'
   if (type === 'vue_project') return '✦'
   return (props.app.appName || 'A').charAt(0)
-})
-
-const cardTag = computed(() => {
-  if (props.app.codeGenType) {
-    return formatCodeGenType(props.app.codeGenType).toUpperCase()
-  }
-  return 'AI APP'
 })
 
 const cardDesc = computed(() => {
@@ -163,7 +167,7 @@ const handlePinToggle = () => {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 4;
   border-radius: inherit;
   padding: 1px;
   background: linear-gradient(135deg, rgba(178, 190, 255, 0.5), transparent 34%, transparent 66%, rgba(126, 230, 207, 0.34));
@@ -177,7 +181,7 @@ const handlePinToggle = () => {
   content: '';
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 5;
   background: linear-gradient(120deg, transparent 25%, rgba(255, 255, 255, 0.09) 47%, transparent 70%);
   transform: translateX(-115%);
   transition: 0.6s;
@@ -185,6 +189,41 @@ const handlePinToggle = () => {
 .app-card:hover {
   transform: translateY(-8px);
   box-shadow: inset 0 1px rgba(255, 255, 255, 0.12), 0 28px 70px rgba(2, 5, 17, 0.35);
+}
+.card-cover {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.9;
+  transition: transform 0.5s ease, opacity 0.3s ease;
+}
+.app-card:hover .card-cover {
+  transform: scale(1.06);
+  opacity: 1;
+}
+.card-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    rgba(10, 16, 36, 0.86) 0%,
+    rgba(10, 16, 36, 0.62) 46%,
+    rgba(10, 16, 36, 0.16) 100%
+  );
+}
+.card-slice,
+.card-orbit {
+  z-index: 2;
+}
+.card-icon,
+.card-content,
+.card-actions {
+  z-index: 3;
 }
 .app-card:hover::before {
   opacity: 1;
@@ -255,12 +294,6 @@ const handlePinToggle = () => {
   gap: 7px;
   min-width: 0;
 }
-.card-content em {
-  font-style: normal;
-  font: 9px 'DM Mono', monospace;
-  letter-spacing: 0.12em;
-  color: #aebde9;
-}
 .card-content strong {
   font-size: 18px;
   display: flex;
@@ -298,6 +331,11 @@ const handlePinToggle = () => {
   color: #8ff0be;
   border-color: rgba(51, 217, 178, 0.45);
 }
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
 .card-desc {
   max-width: 260px;
   color: #aeb7d3;
@@ -307,11 +345,6 @@ const handlePinToggle = () => {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-}
-.card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
 }
 .card-actions {
   margin-left: auto;

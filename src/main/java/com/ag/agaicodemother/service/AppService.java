@@ -55,18 +55,6 @@ public interface AppService extends IService<App> {
      */
     void undeployApp(Long appId, User loginUser);
 
-    /**
-     * 下载应用代码（下载功能新增）
-     * 把应用"当前版本"目录下的全部代码文件打包成 zip 字节数组，
-     * 由 Controller 以附件形式返回给前端下载。
-     * 为什么下载版本目录而不是部署目录：部署目录可能已下线被清空，
-     * 版本目录是代码的唯一可靠来源。
-     *
-     * @param appId     应用 ID
-     * @param loginUser 登录用户（权限校验：仅本人或管理员可下载）
-     * @return zip 文件字节数组
-     */
-    byte[] downloadApp(Long appId, User loginUser);
 
     /**
      * 查看应用的历史版本号列表（版本化功能一）
