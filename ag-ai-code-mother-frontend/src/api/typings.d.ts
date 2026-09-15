@@ -319,12 +319,23 @@ declare namespace API {
     userRole?: string
   }
 
+  /** 当前登录用户修改自己的资料（不含角色、账号，避免越权） */
+  type UserUpdateMyRequest = {
+    userName?: string
+    userAvatar?: string
+    userProfile?: string
+  }
+
   type UserVO = {
     id?: number
     userAccount?: string
     userName?: string
     userAvatar?: string
     userProfile?: string
+    isVip?: number
+    vipExpireTime?: string
+    vipNumber?: number
+    shareCode?: string
     userRole?: string
     createTime?: string
   }

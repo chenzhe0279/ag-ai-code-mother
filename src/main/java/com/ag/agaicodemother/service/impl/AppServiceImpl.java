@@ -110,6 +110,9 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         App updateApp = new App();
         // 定位要更新的行
         updateApp.setId(appId);
+        //设置默认封面图
+        //String defaultCover = "D:\\Desktop\\5ad5a64b1b74aaaf2aeff19d17fd43d0.jpg";
+        //updateApp.setCover(defaultCover);
         // 设置新的生成状态
         updateApp.setGenStatus(AppGenStatusEnum.GENERATING.getValue());
         // 执行更新

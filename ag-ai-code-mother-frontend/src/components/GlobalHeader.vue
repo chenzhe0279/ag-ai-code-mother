@@ -18,28 +18,20 @@
       <!-- 右侧：用户操作区域 -->
       <div class="nav-user">
         <template v-if="loginUserStore.loginUser.id">
-          <a-dropdown>
-            <button class="nav-chip" type="button">
-              <span class="nav-chip-avatar">
-                <img
-                  v-if="loginUserStore.loginUser.userAvatar"
-                  :src="loginUserStore.loginUser.userAvatar"
-                  alt=""
-                />
-                <span v-else>{{ (loginUserStore.loginUser.userName ?? '无')[0] }}</span>
-              </span>
-              <span>{{ loginUserStore.loginUser.userName ?? '无名' }}</span>
-              <em v-if="loginUserStore.loginUser.userRole === 'admin'">admin</em>
-            </button>
-            <template #overlay>
-              <a-menu>
-                <a-menu-item key="logout" @click="doLogout">
-                  <LogoutOutlined />
-                  退出登录
-                </a-menu-item>
-              </a-menu>
-            </template>
-          </a-dropdown>
+          <!-- 点击头像/昵称直接进入个人主页 -->
+          <button class="nav-chip" type="button" title="个人主页" @click="goProfile">
+            <span class="nav-chip-avatar">
+              <img
+                v-if="loginUserStore.loginUser.userAvatar"
+                :src="loginUserStore.loginUser.userAvatar"
+                alt=""
+              />
+              <span v-else>{{ (loginUserStore.loginUser.userName ?? '无')[0] }}</span>
+            </span>
+            <span>{{ loginUserStore.loginUser.userName ?? '无名' }}</span>
+            <em v-if="loginUserStore.loginUser.userRole === 'admin'">admin</em>
+          </button>
+          <button class="nav-link" type="button" @click="doLogout">退出</button>
         </template>
         <template v-else>
           <a-button class="nav-link-btn" href="/user/login">登录</a-button>
@@ -56,7 +48,7 @@ import { useRouter } from 'vue-router'
 import { type MenuProps, message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { userLogout } from '@/api/userController.ts'
-import { LogoutOutlined, HomeOutlined } from '@ant-design/icons-vue'
+import { HomeOutlined } from '@ant-design/icons-vue'
 
 const loginUserStore = useLoginUserStore()
 const router = useRouter()
@@ -84,6 +76,11 @@ const originItems = [
     key: '/admin/appManage',
     label: '应用管理',
     title: '应用管理',
+  },
+  {
+    key: '/admin/chatManage',
+    label: '对话管理',
+    title: '对话管理',
   },
 ]
 
@@ -126,6 +123,11 @@ const doLogout = async () => {
   } else {
     message.error('退出登录失败，' + res.data.message)
   }
+}
+
+// 进入个人主页
+const goProfile = () => {
+  router.push('/user/profile')
 }
 </script>
 
@@ -245,6 +247,24 @@ const doLogout = async () => {
   background: rgba(17, 26, 49, 0.32);
   color: #cdd8f5;
   backdrop-filter: blur(8px);
+}
+
+/* 顶部「退出」按钮 */
+.nav-link {
+  border: 1px solid rgba(164, 184, 232, 0.23);
+  border-radius: 10px;
+  padding: 6px 14px;
+  background: rgba(17, 26, 49, 0.32);
+  color: #cdd8f5;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.2s;
+  backdrop-filter: blur(8px);
+}
+
+.nav-link:hover {
+  border-color: rgba(185, 204, 255, 0.6);
+  color: #fff;
 }
 
 .nav-link-btn.primary {

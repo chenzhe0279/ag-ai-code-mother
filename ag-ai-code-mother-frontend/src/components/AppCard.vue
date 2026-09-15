@@ -36,22 +36,31 @@
         <i v-for="tag in tagList" :key="tag" class="flag tag">{{ tag }}</i>
       </small>
     </span>
-    <span class="card-actions">
+    <!-- 操作区统一拦截点击冒泡：按钮都放在这里面，
+         即使某个子按钮的事件被组件接管，也不会冒泡到卡片触发"查看对话" -->
+    <span class="card-actions" @click.stop="stopCardClick" @keydown.stop="stopCardClick">
+      <span
+        v-if="canManage"
+        class="card-action-btn delete"
+        role="button"
+        title="删除作品"
+        @click.stop="handleDeleteClick"
+      >
+        ✕
+      </span>
       <span
         v-if="canManage"
         class="card-action-btn pin"
         role="button"
         :title="isPinned ? '取消置顶' : '置顶'"
-        @click.stop="handlePinToggle"
-        @keydown.enter.stop="handlePinToggle"
+        @click="handlePinToggle"
       >✦</span>
       <span
         v-if="canOpenWork"
         class="card-arrow"
         role="button"
         title="查看作品"
-        @click.stop="handleViewWork"
-        @keydown.enter.stop="handleViewWork"
+        @click="handleViewWork"
       >↗</span>
     </span>
   </div>
@@ -59,6 +68,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { App } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 
 interface Props {
@@ -70,6 +80,7 @@ interface Emits {
   (e: 'view-chat', appId: string | number | undefined): void
   (e: 'view-work', app: API.AppVO): void
   (e: 'pin-toggle', app: API.AppVO): void
+  (e: 'delete-app', app: API.AppVO): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -130,7 +141,14 @@ const colorClass = computed(() => {
   return ['rose', 'violet', 'sky'][Math.abs(id) % 3]
 })
 
-const handleViewChat = () => {
+const handleViewChat = (e?: Event) => {
+  // 兜底拦截：操作区（✦ 置顶 / ✕ 删除 / ↗ 查看作品）里的点击一律不触发卡片跳转。
+  // a-popconfirm 会接管它子元素的点击事件，靠 @click.stop 未必拦得住，
+  // 所以这里直接判断事件来源是否落在操作区内。
+  const target = e?.target as HTMLElement | null
+  if (target && target.closest('.card-actions')) {
+    return
+  }
   emit('view-chat', props.app.id)
 }
 
@@ -140,6 +158,32 @@ const handleViewWork = () => {
 
 const handlePinToggle = () => {
   emit('pin-toggle', props.app)
+}
+
+// 用程序化确认框而不是 a-popconfirm：
+// popconfirm 会接管子元素的点击事件，实测点击后既不弹窗也不阻止冒泡，
+// 事件直接冒到卡片上跳进了应用。改成自己处理点击，行为完全可控。
+const { modal } = App.useApp()
+
+const handleDeleteClick = (e: Event) => {
+  e.stopPropagation()
+  modal.confirm({
+    title: '删除作品',
+    content: `确定要删除「${props.app.appName || '未命名应用'}」吗？删除后不可恢复。`,
+    okText: '删除',
+    okType: 'danger',
+    cancelText: '取消',
+    onOk: () => {
+      emit('delete-app', props.app)
+    },
+  })
+}
+
+// 操作区所有点击都在容器层拦截冒泡：
+// a-popconfirm 会克隆子元素并接管它的点击事件，子元素上的 @click.stop 会失效，
+// 导致点删除时冒泡到卡片、直接跳进应用。放在容器上就不受子组件实现影响。
+const stopCardClick = (e: Event) => {
+  e.stopPropagation()
 }
 </script>
 
@@ -175,6 +219,7 @@ const handlePinToggle = () => {
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   opacity: 0.35;
+  pointer-events: none;
   transition: opacity 0.3s;
 }
 .app-card::after {
@@ -184,6 +229,7 @@ const handlePinToggle = () => {
   z-index: 5;
   background: linear-gradient(120deg, transparent 25%, rgba(255, 255, 255, 0.09) 47%, transparent 70%);
   transform: translateX(-115%);
+  pointer-events: none;
   transition: 0.6s;
 }
 .app-card:hover {
@@ -223,6 +269,7 @@ const handlePinToggle = () => {
 .card-icon,
 .card-content,
 .card-actions {
+  position: relative;
   z-index: 3;
 }
 .app-card:hover::before {
@@ -347,6 +394,7 @@ const handlePinToggle = () => {
   overflow: hidden;
 }
 .card-actions {
+  z-index: 6;
   margin-left: auto;
   align-self: flex-start;
   display: flex;
@@ -364,16 +412,37 @@ const handlePinToggle = () => {
   color: #8c9abc;
   font-size: 13px;
   cursor: pointer;
-  opacity: 0;
+  opacity: 0.78;
+  transition: 0.2s;
+}
+.card-action-btn.delete {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(168, 186, 235, 0.24);
+  border-radius: 9px;
+  background: rgba(11, 18, 38, 0.4);
+  color: #8c9abc;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.78;
   transition: 0.2s;
 }
 .app-card:hover .card-action-btn.pin,
-.card-action-btn.pin:focus-visible {
+.card-action-btn.pin:focus-visible,
+.app-card:hover .card-action-btn.delete,
+.card-action-btn.delete:focus-visible {
   opacity: 1;
 }
 .card-action-btn.pin:hover {
   background: rgba(135, 150, 246, 0.16);
   color: #fff;
+}
+.card-action-btn.delete:hover {
+  background: rgba(246, 127, 138, 0.18);
+  border-color: rgba(246, 127, 138, 0.5);
+  color: #ffb0bc;
 }
 .card-arrow {
   color: #cbd7ff;

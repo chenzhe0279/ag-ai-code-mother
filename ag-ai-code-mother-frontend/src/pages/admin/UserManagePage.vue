@@ -8,11 +8,26 @@
       <a-form-item label="用户名">
         <a-input v-model:value="searchParams.userName" placeholder="输入用户名" />
       </a-form-item>
+      <a-form-item label="角色">
+        <a-select
+          v-model:value="searchParams.userRole"
+          placeholder="全部"
+          style="width: 130px"
+          allow-clear
+        >
+          <a-select-option :value="undefined">全部</a-select-option>
+          <a-select-option value="user">普通用户</a-select-option>
+          <a-select-option value="admin">管理员</a-select-option>
+        </a-select>
+      </a-form-item>
       <a-form-item>
         <a-button type="primary" html-type="submit">搜索</a-button>
       </a-form-item>
     </a-form>
     <a-divider />
+    <div class="table-toolbar">
+      <a-button type="primary" @click="openAddModal">新增用户</a-button>
+    </div>
     <!-- 表格 -->
     <a-table
       :columns="columns"
@@ -32,21 +47,169 @@
             <a-tag color="blue">普通用户</a-tag>
           </div>
         </template>
+        <template v-else-if="column.dataIndex === 'isVip'">
+          <a-tag v-if="record.isVip" color="gold">VIP</a-tag>
+          <span v-else class="text-gray">-</span>
+        </template>
         <template v-else-if="column.dataIndex === 'createTime'">
           {{ dayjs(record.createTime).format('YYYY-MM-DD HH:mm:ss') }}
         </template>
         <template v-else-if="column.key === 'action'">
-          <a-button danger @click="doDelete(record.id)">删除</a-button>
+          <a-space>
+            <a-button type="primary" size="small" @click="openEditModal(record)">编辑</a-button>
+            <a-popconfirm title="确定要删除这个用户吗？" @confirm="doDelete(record.id)">
+              <a-button danger size="small">删除</a-button>
+            </a-popconfirm>
+          </a-space>
         </template>
       </template>
     </a-table>
+
+    <!-- 新增 / 编辑用户弹窗 -->
+    <a-modal
+      v-model:open="modalVisible"
+      :title="isEditMode ? '编辑用户' : '新增用户'"
+      :confirm-loading="submitting"
+      @ok="handleSubmit"
+      @cancel="handleCancel"
+    >
+      <a-alert
+        v-if="!isEditMode"
+        message="新用户初始密码为 12345678，请提醒用户及时修改"
+        type="info"
+        show-icon
+        class="modal-tip"
+      />
+      <a-form ref="formRef" :model="formData" :rules="formRules" layout="vertical">
+        <a-form-item label="账号" name="userAccount">
+          <a-input
+            v-model:value="formData.userAccount"
+            placeholder="请输入账号"
+            :disabled="isEditMode"
+          />
+        </a-form-item>
+        <a-form-item label="昵称" name="userName">
+          <a-input v-model:value="formData.userName" placeholder="请输入昵称" />
+        </a-form-item>
+        <a-form-item label="头像地址" name="userAvatar">
+          <a-input v-model:value="formData.userAvatar" placeholder="请输入头像图片地址" />
+        </a-form-item>
+        <a-form-item label="简介" name="userProfile">
+          <a-textarea v-model:value="formData.userProfile" placeholder="请输入简介" :rows="3" />
+        </a-form-item>
+        <a-form-item label="角色" name="userRole">
+          <a-select v-model:value="formData.userRole" placeholder="请选择角色">
+            <a-select-option value="user">普通用户</a-select-option>
+            <a-select-option value="admin">管理员</a-select-option>
+          </a-select>
+        </a-form-item>
+      </a-form>
+    </a-modal>
   </div>
 </template>
 <script lang="ts" setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { deleteUser, listUserVoByPage } from '@/api/userController.ts'
+import { addUser, deleteUser, listUserVoByPage, updateUser } from '@/api/userController.ts'
 import { message } from 'ant-design-vue'
+import type { FormInstance } from 'ant-design-vue'
 import dayjs from 'dayjs'
+
+// ==================== 新增 / 编辑用户 ====================
+const modalVisible = ref(false)
+const isEditMode = ref(false)
+const submitting = ref(false)
+const formRef = ref<FormInstance>()
+// 编辑时记录当前用户 id（账号不允许修改，所以不放进表单）
+const editingId = ref<number>()
+const formData = reactive<API.UserAddRequest>({
+  userAccount: '',
+  userName: '',
+  userAvatar: '',
+  userProfile: '',
+  userRole: 'user',
+})
+const formRules = {
+  userAccount: [{ required: true, message: '请输入账号', trigger: 'blur' }],
+  userName: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
+  userRole: [{ required: true, message: '请选择角色', trigger: 'change' }],
+}
+
+// 重置表单为初始状态
+const resetForm = () => {
+  formData.userAccount = ''
+  formData.userName = ''
+  formData.userAvatar = ''
+  formData.userProfile = ''
+  formData.userRole = 'user'
+  editingId.value = undefined
+  formRef.value?.clearValidate()
+}
+
+// 打开新增弹窗
+const openAddModal = () => {
+  isEditMode.value = false
+  resetForm()
+  modalVisible.value = true
+}
+
+// 打开编辑弹窗（回显当前行数据）
+const openEditModal = (record: API.UserVO) => {
+  isEditMode.value = true
+  resetForm()
+  editingId.value = record.id
+  formData.userAccount = record.userAccount ?? ''
+  formData.userName = record.userName ?? ''
+  formData.userAvatar = record.userAvatar ?? ''
+  formData.userProfile = record.userProfile ?? ''
+  formData.userRole = record.userRole ?? 'user'
+  modalVisible.value = true
+}
+
+const handleCancel = () => {
+  modalVisible.value = false
+  resetForm()
+}
+
+// 提交新增 / 编辑
+const handleSubmit = async () => {
+  try {
+    await formRef.value?.validate()
+  } catch {
+    // 校验未通过，表单已给出提示
+    return
+  }
+  submitting.value = true
+  try {
+    const res = isEditMode.value
+      ? await updateUser({
+          id: editingId.value,
+          userName: formData.userName,
+          userAvatar: formData.userAvatar,
+          userProfile: formData.userProfile,
+          userRole: formData.userRole,
+        })
+      : await addUser({
+          userAccount: formData.userAccount,
+          userName: formData.userName,
+          userAvatar: formData.userAvatar,
+          userProfile: formData.userProfile,
+          userRole: formData.userRole,
+        })
+    if (res.data.code === 0) {
+      message.success(isEditMode.value ? '修改成功' : '新增成功')
+      modalVisible.value = false
+      resetForm()
+      fetchData()
+    } else {
+      message.error((isEditMode.value ? '修改失败：' : '新增失败：') + res.data.message)
+    }
+  } catch (error) {
+    console.error('提交失败：', error)
+    message.error('提交失败，请重试')
+  } finally {
+    submitting.value = false
+  }
+}
 
 const columns = [
   {
@@ -72,6 +235,10 @@ const columns = [
   {
     title: '用户角色',
     dataIndex: 'userRole',
+  },
+  {
+    title: '会员',
+    dataIndex: 'isVip',
   },
   {
     title: '创建时间',
@@ -157,5 +324,17 @@ onMounted(() => {
   padding: 24px;
   background: white;
   margin-top: 16px;
+}
+
+.table-toolbar {
+  margin-bottom: 16px;
+}
+
+.modal-tip {
+  margin-bottom: 16px;
+}
+
+.text-gray {
+  color: #999;
 }
 </style>

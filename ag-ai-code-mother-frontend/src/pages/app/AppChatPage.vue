@@ -211,6 +211,17 @@
               </template>
               新窗口打开
             </a-button>
+            <a-button
+              v-if="previewUrl"
+              type="link"
+              :loading="previewBuilding"
+              @click="updatePreview"
+            >
+              <template #icon>
+                <ReloadOutlined />
+              </template>
+              刷新预览
+            </a-button>
           </div>
         </div>
         <div class="preview-content">
@@ -221,6 +232,10 @@
           <div v-else-if="isGenerating" class="preview-loading">
             <a-spin size="large" />
             <p>正在生成网站...</p>
+          </div>
+          <div v-else-if="previewBuilding" class="preview-loading">
+            <a-spin size="large" />
+            <p>Vue 项目构建中，请稍候...</p>
           </div>
           <iframe
               v-else
@@ -310,6 +325,7 @@ import {
   DownloadOutlined,
   EditOutlined,
   HistoryOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -342,6 +358,7 @@ const historyLoaded = ref(false)
 // 预览相关
 const previewUrl = ref('')
 const previewReady = ref(false)
+const previewBuilding = ref(false)
 
 // 部署相关
 const deploying = ref(false)
@@ -689,6 +706,41 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
       }, 150)
     }
 
+    // 看门狗：后端流异常时可能既不发 done 事件、也不主动断开连接，
+    // 此时界面会一直停在"正在生成"。超过 20s 没有新数据就主动收尾。
+    let watchdogTimer: number | null = null
+    const clearWatchdog = () => {
+      if (watchdogTimer !== null) {
+        window.clearTimeout(watchdogTimer)
+        watchdogTimer = null
+      }
+    }
+    // 统一收尾入口：done 事件、连接中断、看门狗超时三种结束场景共用
+    const finalizeStream = (closeConnection: boolean) => {
+      const alreadyFinalized = streamCompleted
+      streamCompleted = true
+      if (!alreadyFinalized) {
+        clearWatchdog()
+        isGenerating.value = false
+        flushRender()
+        // 延迟刷新应用信息与预览，确保后端已把代码文件写盘
+        setTimeout(async () => {
+          await fetchAppInfo()
+          await updatePreview()
+        }, 1000)
+      }
+      if (closeConnection) {
+        eventSource?.close()
+        activeEventSource = null
+      }
+    }
+    const resetWatchdog = () => {
+      clearWatchdog()
+      // 看门狗只收尾界面、不关闭连接，避免误触发后端把它标记为生成失败
+      watchdogTimer = window.setTimeout(() => finalizeStream(false), 20000)
+    }
+    resetWatchdog()
+
     // 处理接收到的消息
     eventSource.onmessage = function (event) {
       if (streamCompleted) return
@@ -702,6 +754,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         if (content !== undefined && content !== null) {
           fullContent += content
           scheduleRender()
+          resetWatchdog()
         }
       } catch (error) {
         console.error('解析消息失败:', error)
@@ -711,19 +764,7 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
 
     // 处理done事件
     eventSource.addEventListener('done', function () {
-      if (streamCompleted) return
-
-      streamCompleted = true
-      isGenerating.value = false
-      flushRender()
-      eventSource?.close()
-      activeEventSource = null
-
-      // 延迟更新预览，确保后端已完成处理
-      setTimeout(async () => {
-        await fetchAppInfo()
-        updatePreview()
-      }, 1000)
+      finalizeStream(true)
     })
 
     // 处理business-error事件（后端限流等错误）
@@ -740,34 +781,27 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         messages.value[aiMessageIndex].loading = false
         message.error(errorMessage)
 
-        streamCompleted = true
-        isGenerating.value = false
-        eventSource?.close()
-        activeEventSource = null
+        finalizeStream(true)
       } catch (parseError) {
         console.error('解析错误事件失败:', parseError, '原始数据:', event.data)
         handleError(new Error('服务器返回错误'), aiMessageIndex)
       }
     })
 
-    // 处理错误
+    // 处理连接中断：后端流异常结束（例如内部报错）时不会发送 done 事件，
+    // 只能靠连接状态兜底。只要已经收到过内容，就按"本次生成已结束"收尾。
     eventSource.onerror = function () {
-      if (streamCompleted || !isGenerating.value) return
-      // 检查是否是正常的连接关闭
-      if (eventSource?.readyState === EventSource.CONNECTING) {
-        streamCompleted = true
-        isGenerating.value = false
-        flushRender()
-        eventSource?.close()
-        activeEventSource = null
-
-        setTimeout(async () => {
-          await fetchAppInfo()
-          updatePreview()
-        }, 1000)
-      } else {
-        handleError(new Error('SSE连接错误'), aiMessageIndex)
+      if (streamCompleted) return
+      if (fullContent) {
+        finalizeStream(true)
+        return
       }
+      // 一个字符都没收到就断了，按失败提示
+      streamCompleted = true
+      clearWatchdog()
+      eventSource?.close()
+      activeEventSource = null
+      handleError(new Error('SSE连接错误'), aiMessageIndex)
     }
   } catch (error) {
     console.error('创建 EventSource 失败：', error)
@@ -784,18 +818,40 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
   isGenerating.value = false
 }
 
-// 更新预览
-const updatePreview = () => {
-  if (appId.value) {
-    const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
-    const newPreviewUrl = getStaticPreviewUrl(
-      codeGenType,
-      String(appId.value),
-      appInfo.value?.currentVersion,
-    )
-    previewUrl.value = newPreviewUrl
-    previewReady.value = true
+// 探测预览地址是否就绪：Vue 项目在流结束后还需由后端异步构建产出 dist，未就绪时访问会 404
+const waitForPreviewReady = async (url: string, maxAttempts = 20, intervalMs = 1500) => {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      if (res.ok) return true
+    } catch {
+      // 网络瞬时异常，继续重试
+    }
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
+  return false
+}
+
+// 更新预览（手动点击「刷新预览」也会走到这里）
+const updatePreview = async () => {
+  if (!appId.value) return
+  const codeGenType = appInfo.value?.codeGenType || CodeGenTypeEnum.HTML
+  const newPreviewUrl = getStaticPreviewUrl(
+    codeGenType,
+    String(appId.value),
+    appInfo.value?.currentVersion,
+  )
+  // Vue 工程模式要等后端把 dist 构建出来，先轮询探测再挂 iframe，避免直接展示 404 页面
+  if (codeGenType === CodeGenTypeEnum.VUE_PROJECT) {
+    previewBuilding.value = true
+    const ready = await waitForPreviewReady(newPreviewUrl)
+    previewBuilding.value = false
+    if (!ready) {
+      message.warning('Vue 项目构建尚未完成，可稍后点击「刷新预览」')
+    }
+  }
+  previewUrl.value = newPreviewUrl
+  previewReady.value = true
 }
 
 // 滚动到底部

@@ -25,6 +25,9 @@ const themeConfig = {
   <!-- 全局动态背景（四套可切换，右下角控件） -->
   <BackgroundSwitcher />
   <a-config-provider :theme="themeConfig" :locale="zhCN">
-    <BasicLayout />
+    <!-- a-app 让 Modal.message 等程序化调用的弹窗也能继承 ConfigProvider 的主题 -->
+    <a-app>
+      <BasicLayout />
+    </a-app>
   </a-config-provider>
 </template>

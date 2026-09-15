@@ -8,6 +8,8 @@ import com.ag.agaicodemother.service.AppService;
 import com.ag.agaicodemother.service.ChatHistoryService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
 /**
@@ -15,8 +17,10 @@ import reactor.core.publisher.Flux;
  * 处理 HTML 和 MULTI_FILE 类型的流式响应
  */
 @Slf4j
+@Component
 public class SimpleTextStreamHandler {
 
+    @Lazy
     @Resource
     private AppService appService;
 

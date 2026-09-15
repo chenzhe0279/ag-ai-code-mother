@@ -5,11 +5,14 @@ import { message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
 import {
   addApp,
+  deleteApp,
+  getAppVoById,
   listMyAppVoByPage,
   listGoodAppVoByPage,
   pinApp,
   unpinApp,
 } from '@/api/appController'
+import { formatCodeGenType } from '@/utils/codeGenTypes'
 import { getDeployUrl } from '@/config/env'
 import AppCard from '@/components/AppCard.vue'
 
@@ -63,9 +66,21 @@ const createApp = async () => {
     })
 
     if (res.data.code === 0 && res.data.data) {
-      message.success('应用创建成功')
-      // 跳转到对话页面，确保ID是字符串类型
+      // 创建时后端会用 AI 按需求自动选择代码生成类型（html / multi_file / vue_project），
+      // 这里回查一次应用信息，把 AI 选中的模式直接提示给用户
       const appId = String(res.data.data)
+      let typeLabel = ''
+      try {
+        const detail = await getAppVoById({ id: Number(appId) })
+        if (detail.data.code === 0 && detail.data.data?.codeGenType) {
+          typeLabel = formatCodeGenType(detail.data.data.codeGenType)
+        }
+      } catch (error) {
+        // 回查失败不影响创建主流程，仅少一条提示
+        console.error('查询应用生成类型失败：', error)
+      }
+      message.success(typeLabel ? `应用创建成功，已为你选择「${typeLabel}」` : '应用创建成功')
+      // 跳转到对话页面，确保ID是字符串类型
       await router.push(`/app/chat/${appId}`)
     } else {
       message.error('创建失败：' + res.data.message)
@@ -154,6 +169,24 @@ const handlePinToggle = async (app: API.AppVO) => {
   }
 }
 
+// 删除作品（仅本人或管理员可删，卡片上已做二次确认）
+const handleDeleteApp = async (app: API.AppVO) => {
+  if (!app.id) return
+  try {
+    const res = await deleteApp({ id: app.id })
+    if (res.data.code === 0) {
+      message.success('删除成功')
+      loadMyApps()
+      loadFeaturedApps()
+    } else {
+      message.error('删除失败：' + res.data.message)
+    }
+  } catch (error) {
+    console.error('删除失败：', error)
+    message.error('删除失败，请重试')
+  }
+}
+
 // 页面加载时获取数据
 onMounted(() => {
   loadMyApps()
@@ -191,6 +224,10 @@ onMounted(() => {
           </a-button>
         </div>
         <div class="visibility-row">
+          <span v-if="creating" class="creating-hint">
+            <span class="thinking-dots"><b></b><b></b><b></b></span>
+            AI 正在理解需求并选择生成模式…
+          </span>
           <span class="visibility-label">可见范围</span>
           <a-radio-group v-model:value="visibility" size="small">
             <a-radio-button value="public">公开</a-radio-button>
@@ -251,6 +288,7 @@ onMounted(() => {
             @view-chat="viewChat"
             @view-work="viewWork"
             @pin-toggle="handlePinToggle"
+            @delete-app="handleDeleteApp"
           />
         </div>
         <div class="pagination-wrapper">
@@ -278,6 +316,7 @@ onMounted(() => {
             @view-chat="viewChat"
             @view-work="viewWork"
             @pin-toggle="handlePinToggle"
+            @delete-app="handleDeleteApp"
           />
         </div>
         <div class="pagination-wrapper">
@@ -422,6 +461,51 @@ onMounted(() => {
   color: var(--text-faint);
   font: 10px 'DM Mono', monospace;
   letter-spacing: 0.1em;
+}
+
+/* 创建过程提示：后端创建时会调用两次 AI（生成名称 + 路由生成类型），耗时较长 */
+.creating-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: auto;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.thinking-dots b {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #b9c8ff;
+  box-shadow: 0 0 8px rgba(142, 166, 255, 0.55);
+  animation: think-blink 1.2s infinite ease-in-out;
+}
+
+.thinking-dots b:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.thinking-dots b:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes think-blink {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
 }
 
 /* 快捷按钮 */

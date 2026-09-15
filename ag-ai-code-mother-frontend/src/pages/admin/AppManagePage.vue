@@ -125,6 +125,7 @@
         </template>
         <template v-else-if="column.key === 'action'">
           <a-space>
+            <a-button type="default" size="small" @click="viewAppDetail(record)"> 详情 </a-button>
             <a-button type="primary" size="small" @click="editApp(record)"> 编辑 </a-button>
             <a-button
               type="default"
@@ -141,6 +142,15 @@
         </template>
       </template>
     </a-table>
+
+    <!-- 应用详情弹窗（管理员视角，走 /app/admin/get/vo） -->
+    <AppDetailModal
+      v-model:open="detailVisible"
+      :app="detailApp"
+      :show-actions="true"
+      @edit="editCurrentDetail"
+      @delete="deleteCurrentDetail"
+    />
   </div>
 </template>
 
@@ -148,10 +158,16 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import { listAppVoByPageByAdmin, deleteAppByAdmin, updateAppByAdmin } from '@/api/appController'
+import {
+  listAppVoByPageByAdmin,
+  deleteAppByAdmin,
+  updateAppByAdmin,
+  getAppVoByIdByAdmin,
+} from '@/api/appController'
 import { CODE_GEN_TYPE_OPTIONS, formatCodeGenType } from '@/utils/codeGenTypes'
 import { formatTime } from '@/utils/time'
 import UserInfo from '@/components/UserInfo.vue'
+import AppDetailModal from '@/components/AppDetailModal.vue'
 
 const router = useRouter()
 
@@ -228,6 +244,41 @@ const columns = [
 // 数据
 const data = ref<API.AppVO[]>([])
 const total = ref(0)
+
+// 应用详情弹窗
+const detailVisible = ref(false)
+const detailApp = ref<API.AppVO>()
+
+// 查看应用详情（管理员接口，能看到普通接口不返回的字段）
+const viewAppDetail = async (app: API.AppVO) => {
+  if (!app.id) return
+  try {
+    const res = await getAppVoByIdByAdmin({ id: app.id })
+    if (res.data.code === 0 && res.data.data) {
+      detailApp.value = res.data.data
+      detailVisible.value = true
+    } else {
+      message.error('获取应用详情失败：' + res.data.message)
+    }
+  } catch (error) {
+    console.error('获取应用详情失败：', error)
+    message.error('获取应用详情失败')
+  }
+}
+
+// 详情弹窗里点「修改」：跳到编辑页
+const editCurrentDetail = () => {
+  if (detailApp.value) {
+    editApp(detailApp.value)
+  }
+}
+
+// 详情弹窗里点「删除」：先关弹窗再删
+const deleteCurrentDetail = () => {
+  const id = detailApp.value?.id
+  detailVisible.value = false
+  deleteApp(id)
+}
 
 // 搜索条件
 const searchParams = reactive<API.AppQueryRequest>({
