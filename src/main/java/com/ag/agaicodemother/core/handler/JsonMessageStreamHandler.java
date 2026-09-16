@@ -25,6 +25,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 
+import java.io.File;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -74,7 +75,12 @@ public class JsonMessageStreamHandler {
                     chatHistoryService.addChatMessage(appId, aiResponse, ChatHistoryMessageTypeEnum.AI.getValue(), loginUser.getId());
                     updateGenStatus(appId, AppGenStatusEnum.SUCCEEDED);
                     String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/" + AppConstant.CODE_VERSION_DIR_PREFIX + version;
-                    vueProjectBuilder.buildProjectAsync(projectPath);
+                    // 目录里有项目才构建，AI 按失败协议空手结束时不再报错
+                    if (FileUtil.exist(projectPath + "/package.json")) {
+                        vueProjectBuilder.buildProjectAsync(projectPath);
+                    } else {
+                        log.warn("目录中没有 package.json，跳过构建: {}", projectPath);
+                    }
                 })
                 .doOnError(error -> {
                     // 如果AI回复失败，也要记录错误消息

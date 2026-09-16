@@ -28,8 +28,7 @@ public class FileDeleteTool extends BaseTool {
     public String deleteFile(
             @P("文件的相对路径")
             String relativeFilePath,
-            @ToolMemoryId Long appId,
-            Integer version
+            @ToolMemoryId Long appId, Integer version
     ) {
         // 参数兜底：DeepSeek 偶发漏传 arguments 字段（此时参数为 null）。
         // 若在这里抛 NPE，langchain4j 会把 NPE 的 message（null）当作工具结果写回记忆，

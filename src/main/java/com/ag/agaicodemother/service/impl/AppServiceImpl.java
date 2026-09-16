@@ -40,6 +40,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ByteArrayOutputStream;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -105,7 +107,14 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         //   私有方法 reserveNextVersion 在"当前事务"内完成：
         //   行锁串行化并发请求 → 扫描磁盘最大版本目录 +1 → 锁内创建目录 → 写回 currentVersion，
         //   保证并发安全，且指针式回退后再次生成也不会覆盖历史版本
+        //   Vue 项目用工具做增量修改，必须先快照旧版本，否则 AI 面对空目录只能失败或重建
+        Integer previousVersion = app.getCurrentVersion();
         Integer nextVersion = reserveNextVersion(appId);
+        // 仅 Vue 项目用工具做增量修改，需要快照；HTML/多文件由解析保存器整体写入，无需快照
+        if (codeGenTypeEnum == CodeGenTypeEnum.VUE_PROJECT
+                && previousVersion != null && previousVersion > 0) {
+            copyVersionSnapshot(app, previousVersion, nextVersion);
+        }
         // 在发起 AI 生成前先把状态写入数据库，前端从这一刻起轮询到的是"生成中"
         App updateApp = new App();
         // 定位要更新的行
@@ -125,6 +134,38 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId, nextVersion);
         //调用代码解析执行器
         return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum, nextVersion);
+    }
+
+    /**
+     * 把旧版本目录完整复制为新版本的初始快照，AI 在快照上修改，历史版本不动
+     */
+    private void copyVersionSnapshot(App app, Integer sourceVersion, Integer targetVersion) {
+        File sourceDir = getVersionDir(app, sourceVersion);
+        // 源版本不是完整项目（比如生成失败留下的空目录）就不复制，避免复制个空壳
+        if (!new File(sourceDir, "package.json").exists()) {
+            log.warn("版本 v{} 缺少 package.json，跳过快照", sourceVersion);
+            return;
+        }
+        FileUtil.copyContent(sourceDir, getVersionDir(app, targetVersion), true);
+        log.info("版本快照完成: v{} -> v{}", sourceVersion, targetVersion);
+    }
+
+
+    /**
+     * 定位快照源目录：从 sourceVersion 向前找（含自身），
+     * 返回第一个目录存在且包含 package.json 的版本目录；找不到返回 null
+     */
+    private File resolveSnapshotSourceDir(App app, Integer sourceVersion) {
+        for (int v = sourceVersion; v >= 1; v--) {
+            File dir = getVersionDir(app, v);
+            if (dir.isDirectory() && new File(dir, "package.json").exists()) {
+                if (v != sourceVersion) {
+                    log.info("当前版本 v{} 目录为空，快照源回退到 v{}", sourceVersion, v);
+                }
+                return dir;
+            }
+        }
+        return null;
     }
 
     /**
