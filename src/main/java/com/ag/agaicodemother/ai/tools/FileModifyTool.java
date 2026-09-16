@@ -1,11 +1,13 @@
 package com.ag.agaicodemother.ai.tools;
 
+import cn.hutool.json.JSONObject;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolMemoryId;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,28 +22,8 @@ import java.nio.file.StandardOpenOption;
  * 工具实例与当次生成的版本号绑定，修改只作用于本次版本目录，不会污染历史版本文件
  */
 @Slf4j
-public class FileModifyTool {
-
-    /**
-     * 本次生成对应的版本号
-     * 由外层在 reserveNextVersion 预留版本号后通过构造器注入，
-     * 保证工具修改的文件位于 v{version} 隔离目录，不会误改历史版本。
-     * 注意：版本号是系统分配的敏感信息，绝不能作为 @Tool 参数让 AI 自行指定
-     */
-    private final Integer version;
-
-    /**
-     * 构造工具实例（每次生成会话创建一个新实例，绑定当次预留的版本号）
-     *
-     * @param version 预留的版本号（reserveNextVersion 返回值）
-     */
-    public FileModifyTool(Integer version) {
-        // 版本号为空或非正数说明调用方传参错误，快速失败防止改到错误目录
-        if (version == null || version <= 0) {
-            throw new IllegalArgumentException("版本号不能为空且必须为正数");
-        }
-        this.version = version;
-    }
+@Component
+public class FileModifyTool extends BaseTool{
 
     @Tool("修改文件内容，用新内容替换指定的旧内容")
     public String modifyFile(
@@ -51,7 +33,8 @@ public class FileModifyTool {
             String oldContent,
             @P("替换后的新内容")
             String newContent,
-            @ToolMemoryId Long appId
+            @ToolMemoryId Long appId,
+            Integer version
     ) {
         // 参数兜底：DeepSeek 偶发漏传 arguments 字段（此时参数为 null）。
         // 若在 contains/replace 调用上抛 NPE，langchain4j 会把 NPE 的 message（null）
@@ -75,6 +58,7 @@ public class FileModifyTool {
                 String projectDirName = CodeGenTypeEnum.VUE_PROJECT.getValue() + "_" + appId;
                 String versionDirName = AppConstant.CODE_VERSION_DIR_PREFIX + version;
                 Path projectRoot = Paths.get(AppConstant.CODE_OUTPUT_ROOT_DIR, projectDirName, versionDirName);
+                //把相对路径 relativeFilePath 拼接到基础路径 projectRoot 后面，生成一个完整的文件路径
                 path = projectRoot.resolve(relativeFilePath);
             }
             if (!Files.exists(path) || !Files.isRegularFile(path)) {
@@ -96,5 +80,36 @@ public class FileModifyTool {
             log.error(errorMessage, e);
             return errorMessage;
         }
+    }
+
+    @Override
+    public String getToolName() {
+        return "modifyFile";
+    }
+
+    @Override
+    public String getDisplayName() {
+        return "修改文件";
+    }
+
+    @Override
+    public String generateToolExecutedResult(JSONObject arguments) {
+        String relativeFilePath = arguments.getStr("relativeFilePath");
+        String oldContent = arguments.getStr("oldContent");
+        String newContent = arguments.getStr("newContent");
+        // 显示对比内容
+        return String.format("""
+                [工具调用] %s %s
+                
+                替换前：
+                ```
+                %s
+                ```
+                
+                替换后：
+                ```
+                %s
+                ```
+                """, getDisplayName(), relativeFilePath, oldContent, newContent);
     }
 }

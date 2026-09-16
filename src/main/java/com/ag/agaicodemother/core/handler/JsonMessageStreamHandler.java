@@ -8,6 +8,8 @@ import com.ag.agaicodemother.ai.model.message.AiResponseMessage;
 import com.ag.agaicodemother.ai.model.message.StreamMessage;
 import com.ag.agaicodemother.ai.model.message.ToolExecutedMessage;
 import com.ag.agaicodemother.ai.model.message.ToolRequestMessage;
+import com.ag.agaicodemother.ai.tools.BaseTool;
+import com.ag.agaicodemother.ai.tools.ToolManager;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.core.builder.VueProjectBuilder;
 import com.ag.agaicodemother.model.entity.App;
@@ -41,6 +43,8 @@ public class JsonMessageStreamHandler {
     @Resource
     private VueProjectBuilder vueProjectBuilder;
 
+    @Resource
+    private ToolManager toolManager;
     /**
      * 处理 TokenStream（VUE_PROJECT）
      * 解析 JSON 消息并重组为完整的响应格式
@@ -110,12 +114,14 @@ public class JsonMessageStreamHandler {
                 ToolRequestMessage toolRequestMessage = JSONUtil.toBean(chunk, ToolRequestMessage.class);
                 // 获取当前工具调用的唯一 ID
                 String toolId = toolRequestMessage.getId();
+                String toolName = toolRequestMessage.getName();
                 // 通过工具 ID 判断该工具的调用是否在之前的分块中已经出现过（去重）
                 if (toolId != null && !seenToolIds.contains(toolId)) {
                     // 首次出现：将工具 ID 加入已见集合，避免后续相同请求重复输出
                     seenToolIds.add(toolId);
                     // 向前端输出一次工具选择提示，前后加换行避免与相邻文本粘连
-                    return "\n\n[🔧选择工具] 写入文件\n\n";
+                    BaseTool tool = toolManager.getTool(toolName);
+                    return tool.generateToolRequestResponse();
                 } else {
                     // 该工具请求已输出过或 ID 为空，直接返回空串（由外层 filter 过滤）
                     return "";
@@ -123,26 +129,15 @@ public class JsonMessageStreamHandler {
             }
             // 工具执行完成消息：包含实际写入文件的内容
             case TOOL_EXECUTED -> {
-                // 将 chunk 解析为具体的 ToolExecutedMessage 类型，以获取执行结果
                 ToolExecutedMessage toolExecutedMessage = JSONUtil.toBean(chunk, ToolExecutedMessage.class);
-                // 将工具执行参数解析为 JSONObject，方便按字段名读取
+                String toolName = toolExecutedMessage.getName();
                 JSONObject jsonObject = JSONUtil.parseObj(toolExecutedMessage.getArguments());
-                // 从参数中获取写入文件的相对路径
-                String relativeFilePath = jsonObject.getStr("relativeFilePath");
-                // 根据文件路径提取文件后缀名（如 java、vue、json 等），用于生成代码块的语言标识
-                String suffix = FileUtil.getSuffix(relativeFilePath);
-                // 从参数中获取要写入文件的完整文本内容
-                String content = jsonObject.getStr("content");
-                // 格式化生成带文件路径和 Markdown 代码块的展示信息，便于前端渲染和聊天历史记录
-                String result = String.format("""
-                        [🔧工具调用] 写入文件 %s
-                        %s
-                        """, relativeFilePath, suffix, content);
-                // 在 result 前后各添加两个换行，确保输出内容与前后流式文本块分隔清晰
+                // 根据工具名称获取工具实例并生成相应的结果格式
+                BaseTool tool = toolManager.getTool(toolName);
+                String result = tool.generateToolExecutedResult(jsonObject);
+                // 输出前端和要持久化的内容
                 String output = String.format("\n\n%s\n\n", result);
-                // 将格式化后的工具执行结果也追加到聊天历史构建器中，用于统一持久化
                 chatHistoryStringBuilder.append(output);
-                // 返回格式化后的工具执行结果给前端展示
                 return output;
             }
             // 未知消息类型：理论上不会出现，但保留兜底处理

@@ -1,11 +1,13 @@
 package com.ag.agaicodemother.ai.tools;
 
+import cn.hutool.json.JSONObject;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolMemoryId;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -19,34 +21,15 @@ import java.nio.file.Paths;
  * 工具实例与当次生成的版本号绑定，删除只作用于本次版本目录，不会误删历史版本文件
  */
 @Slf4j
-public class FileDeleteTool {
-
-    /**
-     * 本次生成对应的版本号
-     * 由外层在 reserveNextVersion 预留版本号后通过构造器注入，
-     * 保证工具删除的文件位于 v{version} 隔离目录，不会误删历史版本。
-     * 注意：版本号是系统分配的敏感信息，绝不能作为 @Tool 参数让 AI 自行指定
-     */
-    private final Integer version;
-
-    /**
-     * 构造工具实例（每次生成会话创建一个新实例，绑定当次预留的版本号）
-     *
-     * @param version 预留的版本号（reserveNextVersion 返回值）
-     */
-    public FileDeleteTool(Integer version) {
-        // 版本号为空或非正数说明调用方传参错误，快速失败防止删到错误目录
-        if (version == null || version <= 0) {
-            throw new IllegalArgumentException("版本号不能为空且必须为正数");
-        }
-        this.version = version;
-    }
+@Component
+public class FileDeleteTool extends BaseTool {
 
     @Tool("删除指定路径的文件")
     public String deleteFile(
             @P("文件的相对路径")
             String relativeFilePath,
-            @ToolMemoryId Long appId
+            @ToolMemoryId Long appId,
+            Integer version
     ) {
         // 参数兜底：DeepSeek 偶发漏传 arguments 字段（此时参数为 null）。
         // 若在这里抛 NPE，langchain4j 会把 NPE 的 message（null）当作工具结果写回记忆，
@@ -102,5 +85,21 @@ public class FileDeleteTool {
             }
         }
         return false;
+    }
+
+    @Override
+    public String getToolName() {
+        return "deleteFile";
+    }
+
+    @Override
+    public String getDisplayName() {
+        return "删除文件";
+    }
+
+    @Override
+    public String generateToolExecutedResult(JSONObject arguments) {
+        String relativeFilePath = arguments.getStr("relativeFilePath");
+        return String.format("[工具调用] %s %s", getDisplayName(), relativeFilePath);
     }
 }

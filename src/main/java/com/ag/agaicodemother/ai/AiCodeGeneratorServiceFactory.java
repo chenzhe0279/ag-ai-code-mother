@@ -43,6 +43,9 @@ public class AiCodeGeneratorServiceFactory {
     @Resource
     private ChatHistoryService chatHistoryService;
 
+    @Resource
+    private ToolManager toolManager;
+
     /**
      * AI 服务实例缓存
      * 缓存策略：
@@ -95,13 +98,8 @@ public class AiCodeGeneratorServiceFactory {
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(
-                            new FileWriteTool(versionId),
-                            new FileReadTool(versionId),
-                            new FileModifyTool(versionId),
-                            new FileDeleteTool(versionId),
-                            new FileDirReadTool(versionId)
-                    )
+                    .tools(toolManager.getAllTools())
+                    //处理工具调用幻觉问题
                     .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                             toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()
                     ))

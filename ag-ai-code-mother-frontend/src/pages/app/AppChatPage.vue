@@ -224,7 +224,7 @@
           </div>
         </div>
         <div class="preview-content">
-          <div v-if="!previewUrl && !isGenerating" class="preview-placeholder">
+          <div v-if="!previewUrl && !isGenerating && !previewError" class="preview-placeholder">
             <div class="placeholder-icon">🌐</div>
             <p>网站文件生成完成后将在这里展示</p>
           </div>
@@ -236,9 +236,14 @@
             <a-spin size="large" />
             <p>Vue 项目构建中，请稍候...</p>
           </div>
+          <div v-else-if="previewError" class="preview-loading preview-error">
+            <p>{{ previewError }}</p>
+            <a-button type="primary" ghost @click="updatePreview">重新加载预览</a-button>
+          </div>
           <iframe
             v-else
             ref="previewIframe"
+            :key="previewFrameKey"
             :src="previewUrl"
             class="preview-iframe"
             frameborder="0"
@@ -355,6 +360,8 @@ const historyLoaded = ref(false)
 const previewUrl = ref('')
 const previewReady = ref(false)
 const previewBuilding = ref(false)
+const previewError = ref('')
+const previewFrameKey = ref(0)
 const previewIframe = ref<HTMLIFrameElement>()
 
 // 部署相关
@@ -551,9 +558,9 @@ const fetchAppInfo = async () => {
 
       // 先加载对话历史
       await loadChatHistory()
-      // 如果有至少2条对话记录，展示对应的网站
-      if (messages.value.length >= 2) {
-        updatePreview()
+      // 已有成功生成的版本时直接加载预览，不依赖对话历史是否完整返回
+      if (appInfo.value.currentVersion && appInfo.value.genStatus === 'succeeded') {
+        await updatePreview()
       }
       // 检查是否需要自动发送初始提示词
       // 只有在是自己的应用且没有对话历史时才自动发送
@@ -660,6 +667,7 @@ let activeEventSource: EventSource | null = null
 // 生成代码 - 使用 EventSource 处理流式响应
 const generateCode = async (userMessage: string, aiMessageIndex: number) => {
   let streamCompleted = false
+  previewError.value = ''
 
   try {
     // 获取 axios 配置的 baseURL
@@ -721,7 +729,6 @@ const generateCode = async (userMessage: string, aiMessageIndex: number) => {
         // 延迟刷新应用信息与预览，确保后端已把代码文件写盘
         setTimeout(async () => {
           await fetchAppInfo()
-          await updatePreview()
         }, 1000)
       }
       if (closeConnection) {
@@ -814,10 +821,14 @@ const handleError = (error: unknown, aiMessageIndex: number) => {
 }
 
 // 探测预览地址是否就绪：Vue 项目在流结束后还需由后端异步构建产出 dist，未就绪时访问会 404
-const waitForPreviewReady = async (url: string, maxAttempts = 20, intervalMs = 1500) => {
+const waitForPreviewReady = async (url: string, maxAttempts = 180, intervalMs = 1000) => {
   for (let i = 0; i < maxAttempts; i++) {
     try {
-      const res = await fetch(url, { method: 'GET', credentials: 'include' })
+      const res = await fetch(url, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-store',
+      })
       if (res.ok) return true
     } catch {
       // 网络瞬时异常，继续重试
@@ -836,19 +847,23 @@ const updatePreview = async () => {
     String(appId.value),
     appInfo.value?.currentVersion,
   )
+  previewError.value = ''
   // Vue 工程模式要等后端把 dist 构建出来，先轮询探测再挂 iframe，避免直接展示 404 页面
   if (codeGenType === CodeGenTypeEnum.VUE_PROJECT) {
     previewBuilding.value = true
     const ready = await waitForPreviewReady(newPreviewUrl)
     previewBuilding.value = false
     if (!ready) {
-      message.warning('Vue 项目构建尚未完成，可稍后点击「刷新预览」')
+      previewUrl.value = ''
+      previewReady.value = false
+      previewError.value = 'Vue 项目仍在构建中，请稍后点击“重新加载预览”'
+      return
     }
   }
-  if (previewUrl.value !== newPreviewUrl) {
-    previewReady.value = false
-  }
+  previewReady.value = false
   previewUrl.value = newPreviewUrl
+  // 同一版本刷新时 URL 不变，更新 key 可强制浏览器重新加载 iframe
+  previewFrameKey.value += 1
 }
 
 // 滚动到底部
@@ -1395,6 +1410,12 @@ onUnmounted(() => {
 
 .preview-loading p {
   margin-top: 16px;
+}
+
+.preview-error {
+  gap: 4px;
+  padding: 24px;
+  text-align: center;
 }
 
 .preview-iframe {

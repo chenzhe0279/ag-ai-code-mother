@@ -1,12 +1,15 @@
 package com.ag.agaicodemother.ai.tools;
 
 import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolMemoryId;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
 
 import java.io.File;
 import java.nio.file.Path;
@@ -21,7 +24,8 @@ import java.util.Set;
  * 工具实例与当次生成的版本号绑定，AI 只能看到本次版本目录的项目结构，不会混入历史版本
  */
 @Slf4j
-public class FileDirReadTool {
+@Component
+public class FileDirReadTool extends BaseTool{
 
     /**
      * 需要忽略的文件和目录
@@ -38,32 +42,13 @@ public class FileDirReadTool {
             ".log", ".tmp", ".cache", ".lock"
     );
 
-    /**
-     * 本次生成对应的版本号
-     * 由外层在 reserveNextVersion 预留版本号后通过构造器注入，
-     * 保证目录结构读取自 v{version} 隔离目录，不会把历史版本结构呈现给 AI。
-     * 注意：版本号是系统分配的敏感信息，绝不能作为 @Tool 参数让 AI 自行指定
-     */
-    private final Integer version;
-
-    /**
-     * 构造工具实例（每次生成会话创建一个新实例，绑定当次预留的版本号）
-     *
-     * @param version 预留的版本号（reserveNextVersion 返回值）
-     */
-    public FileDirReadTool(Integer version) {
-        // 版本号为空或非正数说明调用方传参错误，快速失败防止读到错误目录
-        if (version == null || version <= 0) {
-            throw new IllegalArgumentException("版本号不能为空且必须为正数");
-        }
-        this.version = version;
-    }
 
     @Tool("读取目录结构，获取指定目录下的所有文件和子目录信息")
     public String readDir(
             @P("目录的相对路径，为空则读取整个项目结构")
             String relativeDirPath,
-            @ToolMemoryId Long appId
+            @ToolMemoryId Long appId,
+            Integer version
     ) {
         try {
             Path path = Paths.get(relativeDirPath == null ? "" : relativeDirPath);
@@ -128,5 +113,24 @@ public class FileDirReadTool {
 
         // 检查文件扩展名
         return IGNORED_EXTENSIONS.stream().anyMatch(fileName::endsWith);
+    }
+
+    @Override
+    public String getToolName() {
+        return "readDir";
+    }
+
+    @Override
+    public String getDisplayName() {
+        return "读取目录";
+    }
+
+    @Override
+    public String generateToolExecutedResult(JSONObject arguments) {
+        String relativeDirPath = arguments.getStr("relativeDirPath");
+        if (StrUtil.isEmpty(relativeDirPath)) {
+            relativeDirPath = "根目录";
+        }
+        return String.format("[工具调用] %s %s", getDisplayName(), relativeDirPath);
     }
 }
