@@ -37,7 +37,7 @@
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'userAvatar'">
-          <a-image :src="record.userAvatar" :width="120" />
+          <a-image :src="resolveAvatarUrl(record.userAvatar)" :width="120" />
         </template>
         <template v-else-if="column.dataIndex === 'userRole'">
           <div v-if="record.userRole === 'admin'">
@@ -113,6 +113,7 @@ import { addUser, deleteUser, listUserVoByPage, updateUser } from '@/api/userCon
 import { message } from 'ant-design-vue'
 import type { FormInstance } from 'ant-design-vue'
 import dayjs from 'dayjs'
+import { resolveAvatarUrl } from '@/config/env'
 
 // ==================== 新增 / 编辑用户 ====================
 const modalVisible = ref(false)

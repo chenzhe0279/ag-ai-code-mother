@@ -34,14 +34,14 @@ export class VisualEditor {
   /**
    * 初始化编辑器
    */
-  init(iframe: HTMLIFrameElement) {
+  init(iframe: HTMLIFrameElement | null): void {
     this.iframe = iframe
   }
 
   /**
    * 开启编辑模式
    */
-  enableEditMode() {
+  enableEditMode(): void {
     if (!this.iframe) {
       return
     }
@@ -54,7 +54,7 @@ export class VisualEditor {
   /**
    * 关闭编辑模式
    */
-  disableEditMode() {
+  disableEditMode(): void {
     this.isEditMode = false
     this.sendMessageToIframe({
       type: 'TOGGLE_EDIT_MODE',
@@ -69,7 +69,7 @@ export class VisualEditor {
   /**
    * 切换编辑模式
    */
-  toggleEditMode() {
+  toggleEditMode(): boolean {
     if (this.isEditMode) {
       this.disableEditMode()
     } else {
@@ -81,7 +81,7 @@ export class VisualEditor {
   /**
    * 强制同步状态并清理
    */
-  syncState() {
+  syncState(): void {
     if (!this.isEditMode) {
       this.sendMessageToIframe({
         type: 'CLEAR_ALL_EFFECTS',
@@ -92,7 +92,7 @@ export class VisualEditor {
   /**
    * 清除选中的元素
    */
-  clearSelection() {
+  clearSelection(): void {
     this.sendMessageToIframe({
       type: 'CLEAR_SELECTION',
     })
@@ -101,7 +101,7 @@ export class VisualEditor {
   /**
    * iframe 加载完成时调用
    */
-  onIframeLoad() {
+  onIframeLoad(): void {
     if (this.isEditMode) {
       setTimeout(() => {
         this.injectEditScript()
@@ -115,18 +115,37 @@ export class VisualEditor {
   }
 
   /**
+   * 销毁编辑器，释放 iframe 引用
+   */
+  destroy(): void {
+    this.disableEditMode()
+    this.iframe = null
+  }
+
+  /**
    * 处理来自 iframe 的消息
    */
-  handleIframeMessage(event: MessageEvent) {
-    const { type, data } = event.data
+  handleIframeMessage(event: MessageEvent): void {
+    if (
+      event.source !== this.iframe?.contentWindow ||
+      !event.data ||
+      typeof event.data !== 'object'
+    ) {
+      return
+    }
+
+    const { type, data } = event.data as {
+      type?: string
+      data?: { elementInfo?: ElementInfo }
+    }
     switch (type) {
       case 'ELEMENT_SELECTED':
-        if (this.options.onElementSelected && data.elementInfo) {
+        if (this.options.onElementSelected && data?.elementInfo) {
           this.options.onElementSelected(data.elementInfo)
         }
         break
       case 'ELEMENT_HOVER':
-        if (this.options.onElementHover && data.elementInfo) {
+        if (this.options.onElementHover && data?.elementInfo) {
           this.options.onElementHover(data.elementInfo)
         }
         break
@@ -136,16 +155,28 @@ export class VisualEditor {
   /**
    * 向 iframe 发送消息
    */
-  private sendMessageToIframe(message: Record<string, any>) {
-    if (this.iframe?.contentWindow) {
-      this.iframe.contentWindow.postMessage(message, '*')
+  private sendMessageToIframe(message: Record<string, unknown>): void {
+    const targetWindow = this.iframe?.contentWindow
+    if (!targetWindow) return
+
+    targetWindow.postMessage(message, this.getTargetOrigin())
+  }
+
+  /**
+   * 获取 iframe 的目标源。主站和预览站同源时只会向当前源发送消息。
+   */
+  private getTargetOrigin(): string {
+    try {
+      return new URL(this.iframe?.src || window.location.href, window.location.href).origin
+    } catch {
+      return window.location.origin
     }
   }
 
   /**
    * 注入编辑脚本到 iframe
    */
-  private injectEditScript() {
+  private injectEditScript(): void {
     if (!this.iframe) return
 
     const waitForIframeLoad = () => {
@@ -179,7 +210,7 @@ export class VisualEditor {
   /**
    * 生成编辑脚本内容
    */
-  private generateEditScript() {
+  private generateEditScript(): string {
     return `
       (function() {
         let isEditMode = true;
@@ -210,10 +241,11 @@ export class VisualEditor {
               z-index: -1 !important;
             }
             .edit-selected {
-              outline: 3px solid #52c41a !important;
+              outline: 3px solid #1677ff !important;
               outline-offset: 2px !important;
               cursor: default !important;
               position: relative !important;
+              box-shadow: 0 0 0 5px rgba(22, 119, 255, 0.16) !important;
             }
             .edit-selected::before {
               content: '' !important;
@@ -222,7 +254,7 @@ export class VisualEditor {
               left: -4px !important;
               right: -4px !important;
               bottom: -4px !important;
-              background: rgba(82, 196, 26, 0.03) !important;
+              background: rgba(22, 119, 255, 0.04) !important;
               pointer-events: none !important;
               z-index: -1 !important;
             }
@@ -241,8 +273,9 @@ export class VisualEditor {
               path.unshift(selector);
               break;
             }
-            if (current.className) {
-              const classes = current.className.split(' ').filter(c => c && !c.startsWith('edit-'));
+            const classAttribute = current.getAttribute('class') || '';
+            if (classAttribute) {
+              const classes = classAttribute.split(/\\s+/).filter(c => c && !c.startsWith('edit-'));
               if (classes.length > 0) {
                 selector += '.' + classes.join('.');
               }
@@ -259,20 +292,16 @@ export class VisualEditor {
         // 获取元素信息
         function getElementInfo(element) {
           const rect = element.getBoundingClientRect();
-          // 获取 HTML 文件名后面的部分（查询参数和锚点）
-          let pagePath = window.location.search + window.location.hash;
-          // 如果没有查询参数和锚点，则显示为空
-          if (!pagePath) {
-            pagePath = '';
-          }
+          const classAttribute = element.getAttribute('class') || '';
+          const pagePath = window.location.pathname + window.location.search + window.location.hash;
 
           return {
             tagName: element.tagName,
             id: element.id,
-            className: element.className,
+            className: classAttribute,
             textContent: element.textContent?.trim().substring(0, 100) || '',
             selector: generateSelector(element),
-            pagePath: pagePath,
+            pagePath,
             rect: {
               top: rect.top,
               left: rect.left,
@@ -306,6 +335,7 @@ export class VisualEditor {
              if (!isEditMode) return;
 
              const target = event.target;
+             if (!(target instanceof Element)) return;
              if (target === currentHoverElement || target === currentSelectedElement) return;
              if (target === document.body || target === document.documentElement) return;
              if (target.tagName === 'SCRIPT' || target.tagName === 'STYLE') return;
@@ -316,10 +346,11 @@ export class VisualEditor {
            };
 
            const mouseoutHandler = (event) => {
-             if (!isEditMode) return;
+            if (!isEditMode) return;
 
-             const target = event.target;
-             if (!event.relatedTarget || !target.contains(event.relatedTarget)) {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            if (!event.relatedTarget || !target.contains(event.relatedTarget)) {
                clearHoverEffect();
              }
            };
@@ -331,6 +362,7 @@ export class VisualEditor {
              event.stopPropagation();
 
              const target = event.target;
+             if (!(target instanceof Element)) return;
              if (target === document.body || target === document.documentElement) return;
              if (target.tagName === 'SCRIPT' || target.tagName === 'STYLE') return;
 
@@ -345,7 +377,7 @@ export class VisualEditor {
                window.parent.postMessage({
                  type: 'ELEMENT_SELECTED',
                  data: { elementInfo }
-               }, '*');
+               }, window.location.origin);
              } catch {
                // 静默处理发送失败
              }
@@ -363,6 +395,9 @@ export class VisualEditor {
 
         // 监听父窗口消息
         window.addEventListener('message', (event) => {
+           if (event.source !== window.parent || event.origin !== window.location.origin) return;
+           if (!event.data || typeof event.data !== 'object') return;
+
            const { type, editMode } = event.data;
            switch (type) {
              case 'TOGGLE_EDIT_MODE':
@@ -393,7 +428,7 @@ export class VisualEditor {
            if (document.getElementById('edit-tip')) return;
            const tip = document.createElement('div');
            tip.id = 'edit-tip';
-           tip.innerHTML = '🎯 编辑模式已开启<br/>悬浮查看元素，点击选中元素';
+           tip.innerHTML = '编辑模式已开启<br/>悬浮查看元素，点击选中元素';
            tip.style.cssText = \`
              position: fixed;
              top: 20px;

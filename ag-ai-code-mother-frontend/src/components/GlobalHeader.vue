@@ -23,7 +23,7 @@
             <span class="nav-chip-avatar">
               <img
                 v-if="loginUserStore.loginUser.userAvatar"
-                :src="loginUserStore.loginUser.userAvatar"
+                :src="resolveAvatarUrl(loginUserStore.loginUser.userAvatar)"
                 alt=""
               />
               <span v-else>{{ (loginUserStore.loginUser.userName ?? '无')[0] }}</span>
@@ -48,6 +48,7 @@ import { useRouter } from 'vue-router'
 import { type MenuProps, message } from 'ant-design-vue'
 import { useLoginUserStore } from '@/stores/loginUser.ts'
 import { userLogout } from '@/api/userController.ts'
+import { resolveAvatarUrl } from '@/config/env'
 import { HomeOutlined } from '@ant-design/icons-vue'
 
 const loginUserStore = useLoginUserStore()
@@ -152,7 +153,9 @@ const goProfile = () => {
   display: flex;
   align-items: center;
   gap: 8px;
-  font: 500 13px 'DM Mono', monospace;
+  font:
+    500 13px 'DM Mono',
+    monospace;
   letter-spacing: 0.13em;
   color: var(--text);
   white-space: nowrap;

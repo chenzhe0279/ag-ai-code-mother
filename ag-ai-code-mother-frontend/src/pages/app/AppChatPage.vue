@@ -38,11 +38,11 @@
           历史版本
         </a-button>
         <a-button
-            type="primary"
-            ghost
-            @click="downloadCode()"
-            :loading="downloading"
-            :disabled="!isOwner"
+          type="primary"
+          ghost
+          @click="downloadCode()"
+          :loading="downloading"
+          :disabled="!isOwner"
         >
           <template #icon>
             <DownloadOutlined />
@@ -86,7 +86,7 @@
             <div v-if="message.type === 'user'" class="user-message">
               <div class="message-content">{{ message.content }}</div>
               <div class="message-avatar">
-                <a-avatar :src="loginUserStore.loginUser.userAvatar" />
+                <a-avatar :src="resolveAvatarUrl(loginUserStore.loginUser.userAvatar)" />
               </div>
             </div>
             <div v-else class="ai-message">
@@ -106,11 +106,11 @@
 
         <!-- 选中元素信息展示 -->
         <a-alert
-            v-if="selectedElementInfo"
-            class="selected-element-alert"
-            type="info"
-            closable
-            @close="clearSelectedElement"
+          v-if="selectedElementInfo"
+          class="selected-element-alert"
+          type="info"
+          closable
+          @close="clearSelectedElement"
         >
           <template #message>
             <div class="selected-element-info">
@@ -147,38 +147,50 @@
           <div class="input-wrapper">
             <a-tooltip v-if="!isOwner" title="无法在别人的作品下对话哦~" placement="top">
               <a-textarea
-                  v-model:value="userInput"
-                  :placeholder="getInputPlaceholder()"
-                  :rows="4"
-                  :maxlength="1000"
-                  @keydown.enter.prevent="sendMessage"
-                  :disabled="isGenerating || !isOwner"
-              />
-            </a-tooltip>
-            <a-textarea
-                v-else
                 v-model:value="userInput"
                 :placeholder="getInputPlaceholder()"
                 :rows="4"
                 :maxlength="1000"
                 @keydown.enter.prevent="sendMessage"
-                :disabled="isGenerating"
+                :disabled="isGenerating || !isOwner"
+              />
+            </a-tooltip>
+            <a-textarea
+              v-else
+              v-model:value="userInput"
+              :placeholder="getInputPlaceholder()"
+              :rows="4"
+              :maxlength="1000"
+              @keydown.enter.prevent="sendMessage"
+              :disabled="isGenerating"
             />
             <div class="input-actions">
+              <a-tooltip
+                v-if="isOwner && previewUrl"
+                :title="isEditMode ? '退出可视化编辑模式' : '进入可视化编辑模式'"
+                placement="top"
+              >
+                <a-button
+                  class="edit-toggle-btn"
+                  :class="{ 'edit-mode-active': isEditMode }"
+                  :type="isEditMode ? 'primary' : 'default'"
+                  :disabled="isGenerating || !previewReady"
+                  @click="toggleEditMode"
+                >
+                  <template #icon>
+                    <EditOutlined />
+                  </template>
+                </a-button>
+              </a-tooltip>
               <a-button
-                  v-if="isGenerating"
-                  class="stop-btn"
-                  title="停止生成"
-                  @click="stopGeneration"
+                v-if="isGenerating"
+                class="stop-btn"
+                title="停止生成"
+                @click="stopGeneration"
               >
                 ■
               </a-button>
-              <a-button
-                  v-else
-                  type="primary"
-                  @click="sendMessage"
-                  :disabled="!isOwner"
-              >
+              <a-button v-else type="primary" @click="sendMessage" :disabled="!isOwner">
                 <template #icon>
                   <SendOutlined />
                 </template>
@@ -192,19 +204,6 @@
         <div class="preview-header">
           <h3>生成后的网页展示</h3>
           <div class="preview-actions">
-            <a-button
-                v-if="isOwner && previewUrl"
-                type="link"
-                :danger="isEditMode"
-                @click="toggleEditMode"
-                :class="{ 'edit-mode-active': isEditMode }"
-                style="padding: 0; height: auto; margin-right: 12px"
-            >
-              <template #icon>
-                <EditOutlined />
-              </template>
-              {{ isEditMode ? '退出编辑' : '编辑模式' }}
-            </a-button>
             <a-button v-if="previewUrl" type="link" @click="openInNewTab">
               <template #icon>
                 <ExportOutlined />
@@ -238,11 +237,12 @@
             <p>Vue 项目构建中，请稍候...</p>
           </div>
           <iframe
-              v-else
-              :src="previewUrl"
-              class="preview-iframe"
-              frameborder="0"
-              @load="onIframeLoad"
+            v-else
+            ref="previewIframe"
+            :src="previewUrl"
+            class="preview-iframe"
+            frameborder="0"
+            @load="onIframeLoad"
           ></iframe>
         </div>
       </div>
@@ -250,18 +250,18 @@
 
     <!-- 应用详情弹窗 -->
     <AppDetailModal
-        v-model:open="appDetailVisible"
-        :app="appInfo"
-        :show-actions="isOwner || isAdmin"
-        @edit="editApp"
-        @delete="deleteApp"
+      v-model:open="appDetailVisible"
+      :app="appInfo"
+      :show-actions="isOwner || isAdmin"
+      @edit="editApp"
+      @delete="deleteApp"
     />
 
     <!-- 部署成功弹窗 -->
     <DeploySuccessModal
-        v-model:open="deployModalVisible"
-        :deploy-url="deployUrl"
-        @open-site="openDeployedSite"
+      v-model:open="deployModalVisible"
+      :deploy-url="deployUrl"
+      @open-site="openDeployedSite"
     />
 
     <!-- 历史版本抽屉 -->
@@ -277,11 +277,7 @@
           <a-space>
             <a-button type="link" size="small" @click="previewVersion(v)">预览</a-button>
             <a-button type="link" size="small" @click="downloadCode(v.version)">下载</a-button>
-            <a-popconfirm
-              v-if="!v.isCurrent"
-              title="确定回退到该版本吗？"
-              @confirm="rollbackTo(v)"
-            >
+            <a-popconfirm v-if="!v.isCurrent" title="确定回退到该版本吗？" @confirm="rollbackTo(v)">
               <a-button type="link" size="small" danger>回退到此版本</a-button>
             </a-popconfirm>
           </a-space>
@@ -313,7 +309,7 @@ import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
 import aiAvatar from '@/assets/aiAvatar.png'
-import { API_BASE_URL, getStaticPreviewUrl } from '@/config/env'
+import { API_BASE_URL, getStaticPreviewUrl, resolveAvatarUrl } from '@/config/env'
 import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 
 import {
@@ -334,7 +330,7 @@ const loginUserStore = useLoginUserStore()
 
 // 应用信息
 const appInfo = ref<API.AppVO>()
-const appId = ref<any>()
+const appId = ref<string>()
 
 // 对话相关
 interface Message {
@@ -359,6 +355,7 @@ const historyLoaded = ref(false)
 const previewUrl = ref('')
 const previewReady = ref(false)
 const previewBuilding = ref(false)
+const previewIframe = ref<HTMLIFrameElement>()
 
 // 部署相关
 const deploying = ref(false)
@@ -488,7 +485,7 @@ const loadChatHistory = async (isLoadMore = false) => {
   loadingHistory.value = true
   try {
     const params: API.listAppChatHistoryParams = {
-      appId: appId.value,
+      appId: appId.value as unknown as number,
       pageSize: 10,
     }
     // 如果是加载更多，传递最后一条消息的创建时间作为游标
@@ -501,12 +498,12 @@ const loadChatHistory = async (isLoadMore = false) => {
       if (chatHistories.length > 0) {
         // 将对话历史转换为消息格式，并按时间正序排列（老消息在前）
         const historyMessages: Message[] = chatHistories
-            .map((chat) => ({
-              type: (chat.messageType === 'user' ? 'user' : 'ai') as 'user' | 'ai',
-              content: chat.message || '',
-              createTime: chat.createTime,
-            }))
-            .reverse() // 反转数组，让老消息在前
+          .map((chat) => ({
+            type: (chat.messageType === 'user' ? 'user' : 'ai') as 'user' | 'ai',
+            content: chat.message || '',
+            createTime: chat.createTime,
+          }))
+          .reverse() // 反转数组，让老消息在前
         if (isLoadMore) {
           // 加载更多时，将历史消息添加到开头
           messages.value.unshift(...historyMessages)
@@ -561,10 +558,10 @@ const fetchAppInfo = async () => {
       // 检查是否需要自动发送初始提示词
       // 只有在是自己的应用且没有对话历史时才自动发送
       if (
-          appInfo.value.initPrompt &&
-          isOwner.value &&
-          messages.value.length === 0 &&
-          historyLoaded.value
+        appInfo.value.initPrompt &&
+        isOwner.value &&
+        messages.value.length === 0 &&
+        historyLoaded.value
       ) {
         await sendInitialMessage(appInfo.value.initPrompt)
       }
@@ -613,6 +610,7 @@ const sendMessage = async () => {
   }
 
   let message = userInput.value.trim()
+  const hasSelectedElement = Boolean(selectedElementInfo.value)
   // 如果有选中的元素，将元素信息添加到提示词中
   if (selectedElementInfo.value) {
     let elementContext = `\n\n选中元素信息：`
@@ -632,12 +630,9 @@ const sendMessage = async () => {
     content: message,
   })
 
-  // 发送消息后，清除选中元素并退出编辑模式
-  if (selectedElementInfo.value) {
-    clearSelectedElement()
-    if (isEditMode.value) {
-      toggleEditMode()
-    }
+  // 发送消息后统一清理选中状态并退出编辑模式，避免影响后续生成流程
+  if (hasSelectedElement || isEditMode.value) {
+    resetVisualEditing()
   }
 
   // 添加AI消息占位符
@@ -850,8 +845,10 @@ const updatePreview = async () => {
       message.warning('Vue 项目构建尚未完成，可稍后点击「刷新预览」')
     }
   }
+  if (previewUrl.value !== newPreviewUrl) {
+    previewReady.value = false
+  }
   previewUrl.value = newPreviewUrl
-  previewReady.value = true
 }
 
 // 滚动到底部
@@ -962,9 +959,8 @@ const openDeployedSite = () => {
 // iframe加载完成
 const onIframeLoad = () => {
   previewReady.value = true
-  const iframe = document.querySelector('.preview-iframe') as HTMLIFrameElement
-  if (iframe) {
-    visualEditor.init(iframe)
+  if (previewIframe.value) {
+    visualEditor.init(previewIframe.value)
     visualEditor.onIframeLoad()
   }
 }
@@ -997,24 +993,27 @@ const deleteApp = async () => {
 
 // 可视化编辑相关函数
 const toggleEditMode = () => {
-  // 检查 iframe 是否已经加载
-  const iframe = document.querySelector('.preview-iframe') as HTMLIFrameElement
-  if (!iframe) {
+  if (!previewIframe.value || !previewReady.value) {
     message.warning('请等待页面加载完成')
     return
   }
-  // 确保 visualEditor 已初始化
-  if (!previewReady.value) {
-    message.warning('请等待页面加载完成')
-    return
-  }
+
   const newEditMode = visualEditor.toggleEditMode()
   isEditMode.value = newEditMode
+  if (!newEditMode) {
+    selectedElementInfo.value = null
+  }
 }
 
 const clearSelectedElement = () => {
   selectedElementInfo.value = null
   visualEditor.clearSelection()
+}
+
+const resetVisualEditing = () => {
+  selectedElementInfo.value = null
+  isEditMode.value = false
+  visualEditor.disableEditMode()
 }
 
 const getInputPlaceholder = () => {
@@ -1024,14 +1023,16 @@ const getInputPlaceholder = () => {
   return '请描述你想生成的网站，越详细效果越好哦'
 }
 
+const handleVisualEditorMessage = (event: MessageEvent) => {
+  visualEditor.handleIframeMessage(event)
+}
+
 // 页面加载时获取应用信息
 onMounted(() => {
   fetchAppInfo()
 
   // 监听 iframe 消息
-  window.addEventListener('message', (event) => {
-    visualEditor.handleIframeMessage(event)
-  })
+  window.addEventListener('message', handleVisualEditorMessage)
 })
 
 // 清理资源
@@ -1039,6 +1040,8 @@ onUnmounted(() => {
   // EventSource 不会随组件卸载自动关闭，必须显式 close
   activeEventSource?.close()
   activeEventSource = null
+  window.removeEventListener('message', handleVisualEditorMessage)
+  visualEditor.destroy()
 })
 </script>
 
@@ -1282,7 +1285,7 @@ onUnmounted(() => {
 }
 
 .input-wrapper :deep(.ant-input) {
-  padding-right: 50px;
+  padding-right: 96px;
   background: rgba(17, 26, 49, 0.42);
   border: 1px solid rgba(175, 190, 225, 0.28);
   border-radius: 14px;
@@ -1305,6 +1308,27 @@ onUnmounted(() => {
   position: absolute;
   bottom: 8px;
   right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-toggle-btn {
+  width: 38px;
+  height: 38px;
+  padding: 0;
+}
+
+.edit-toggle-btn.edit-mode-active {
+  border-color: #52c41a !important;
+  background: #52c41a !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.14);
+}
+
+.edit-toggle-btn.edit-mode-active:hover {
+  border-color: #73d13d !important;
+  background: #73d13d !important;
 }
 
 /* 右侧预览区域 */
@@ -1465,18 +1489,6 @@ onUnmounted(() => {
     font-size: 12px;
     color: #ffb0bc;
     border: 1px solid rgba(168, 186, 235, 0.24);
-  }
-
-  /* 编辑模式按钮样式 */
-  .edit-mode-active {
-    background-color: #52c41a !important;
-    border-color: #52c41a !important;
-    color: white !important;
-  }
-
-  .edit-mode-active:hover {
-    background-color: #73d13d !important;
-    border-color: #73d13d !important;
   }
 }
 </style>

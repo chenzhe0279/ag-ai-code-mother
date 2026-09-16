@@ -7,6 +7,7 @@ import com.mybatisflex.core.query.QueryWrapper;
 import com.mybatisflex.core.service.IService;
 import com.ag.agaicodemother.model.entity.User;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -29,6 +30,10 @@ public interface UserService extends IService<User> {
 
     String getEncryptPassword(String userPassword);
 
+    /**
+     * 上传头像（保存到本地 tmp/avatar，返回相对访问路径并更新当前用户）
+     */
+    String uploadAvatar(MultipartFile file, HttpServletRequest request);
     /**
      * 获取脱敏的已登录用户信息
      *

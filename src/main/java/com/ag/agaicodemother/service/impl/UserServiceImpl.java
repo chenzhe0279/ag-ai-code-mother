@@ -2,9 +2,13 @@ package com.ag.agaicodemother.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollUtil;
+import cn.hutool.core.io.FileUtil;
+import cn.hutool.core.util.IdUtil;
 import cn.hutool.core.util.StrUtil;
+import com.ag.agaicodemother.constant.FileConstant;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
+import com.ag.agaicodemother.exception.ThrowUtils;
 import com.ag.agaicodemother.model.dto.user.UserQueryRequest;
 import com.ag.agaicodemother.model.enums.UserRoleEnum;
 import com.ag.agaicodemother.model.vo.LoginUserVO;
@@ -15,11 +19,17 @@ import com.ag.agaicodemother.model.entity.User;
 import com.ag.agaicodemother.mapper.UserMapper;
 import com.ag.agaicodemother.service.UserService;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.DigestUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static com.ag.agaicodemother.constant.UserConstant.USER_LOGIN_STATE;
@@ -29,8 +39,13 @@ import static com.ag.agaicodemother.constant.UserConstant.USER_LOGIN_STATE;
  *
  * @author <a href="https://github.com/chenzhe0279">陈爱国</a>
  */
+@Slf4j
 @Service
 public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements UserService{
+
+    private static final Set<String> ALLOWED_AVATAR_EXTS = Set.of("jpg", "jpeg", "png", "gif", "webp");
+
+    private static final long MAX_AVATAR_SIZE = 5 * 1024 * 1024L;
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -85,6 +100,60 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         LoginUserVO loginUserVO = new LoginUserVO();
         BeanUtil.copyProperties(user, loginUserVO);
         return loginUserVO;
+    }
+
+    @Override
+    public String uploadAvatar(MultipartFile file, HttpServletRequest request) {
+        // 从当前会话中获取登录用户信息
+        User user = getLoginUser(request);
+        // 校验上传的文件是否为空
+        ThrowUtils.throwIf(file == null || file.isEmpty(), ErrorCode.PARAMS_ERROR, "请选择图片文件");
+        // 校验文件大小是否超过上限（5MB）
+        ThrowUtils.throwIf(file.getSize() > MAX_AVATAR_SIZE,
+                ErrorCode.PARAMS_ERROR, "图片大小不能超过 5MB");
+
+        // 获取原始文件名，若为空则使用默认名称 avatar.jpg
+        String originalName = StrUtil.blankToDefault(file.getOriginalFilename(), "avatar.jpg");
+        // 提取文件扩展名并转为小写
+        String ext = StrUtil.subAfter(originalName, ".", true).toLowerCase();
+        // 校验扩展名是否在允许的图片格式列表中
+        ThrowUtils.throwIf(!ALLOWED_AVATAR_EXTS.contains(ext),
+                ErrorCode.PARAMS_ERROR, "仅支持 jpg / jpeg / png / gif / webp 格式");
+
+        // 构造头像存储目录：基础保存路径 + /avatar
+        String dir = FileConstant.FILE_SAVE_DIR + "/avatar";
+        // 确保目录存在（不存在则创建）
+        FileUtil.mkdir(dir);
+        // 生成唯一文件名：UUID + 扩展名
+        String fileName = IdUtil.fastSimpleUUID() + "." + ext;
+        // 构造目标文件对象
+        File dest = new File(dir, fileName);
+        try {
+            // 将上传的文件保存到目标位置
+            file.transferTo(dest);
+        } catch (IOException e) {
+            // 记录保存失败日志并抛出系统错误异常
+            log.error("头像保存失败", e);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "头像保存失败");
+        }
+
+        // 构造头像访问 URL
+        String avatarUrl = request.getContextPath() + "/file/avatar/" + fileName;
+        // 创建待更新的用户对象，只设置 id 和新头像地址
+        User upLoadUser = new User();
+        upLoadUser.setId(user.getId());
+        upLoadUser.setUserAvatar(avatarUrl);
+        // 更新数据库中用户的头像信息
+        boolean updateResult = this.updateById(upLoadUser);
+        if (!updateResult) {
+            // 更新失败则记录错误日志并抛出异常
+            log.error("用户 {} 更新头像失败：{}", user.getId(), avatarUrl);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "更新头像失败");
+        }
+        // 记录上传成功日志
+        log.info("用户 {} 上传新头像：{}", user.getId(), avatarUrl);
+        // 返回头像访问 URL
+        return avatarUrl;
     }
 
     @Override

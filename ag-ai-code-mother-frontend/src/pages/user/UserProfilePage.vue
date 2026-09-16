@@ -2,9 +2,31 @@
   <div class="profile-page">
     <div class="profile-card reveal">
       <div class="profile-head">
-        <a-avatar :src="formData.userAvatar" :size="72">
-          {{ (formData.userName || 'U').charAt(0) }}
-        </a-avatar>
+        <div class="avatar-upload-wrap">
+          <a-upload
+            name="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            :show-upload-list="false"
+            :before-upload="beforeAvatarUpload"
+            :custom-request="handleAvatarUpload"
+            :disabled="avatarUploading"
+          >
+            <div
+              class="avatar-uploader"
+              :class="{ 'is-uploading': avatarUploading }"
+              title="点击上传头像"
+            >
+              <a-avatar :src="avatarPreviewUrl" :size="72">
+                {{ (formData.userName || 'U').charAt(0) }}
+              </a-avatar>
+              <span class="avatar-overlay" aria-hidden="true">
+                <LoadingOutlined v-if="avatarUploading" spin />
+                <CameraOutlined v-else />
+              </span>
+            </div>
+          </a-upload>
+          <span class="avatar-tip">点击头像上传</span>
+        </div>
         <div class="profile-meta">
           <h2>{{ formData.userName || '未命名用户' }}</h2>
           <p class="profile-account">{{ loginUserStore.loginUser.userAccount || '-' }}</p>
@@ -21,10 +43,12 @@
         @finish="handleSubmit"
       >
         <a-form-item label="昵称" name="userName">
-          <a-input v-model:value="formData.userName" placeholder="请输入昵称" :maxlength="30" show-count />
-        </a-form-item>
-        <a-form-item label="头像地址" name="userAvatar" extra="填入图片链接，留空则显示昵称首字母">
-          <a-input v-model:value="formData.userAvatar" placeholder="https://..." />
+          <a-input
+            v-model:value="formData.userName"
+            placeholder="请输入昵称"
+            :maxlength="30"
+            show-count
+          />
         </a-form-item>
         <a-form-item label="个人简介" name="userProfile">
           <a-textarea
@@ -37,8 +61,15 @@
         </a-form-item>
         <a-form-item>
           <a-space>
-            <a-button type="primary" html-type="submit" :loading="submitting">保存修改</a-button>
-            <a-button @click="resetForm">重置</a-button>
+            <a-button
+              type="primary"
+              html-type="submit"
+              :loading="submitting"
+              :disabled="avatarUploading"
+            >
+              保存修改
+            </a-button>
+            <a-button :disabled="avatarUploading" @click="resetForm">重置</a-button>
           </a-space>
         </a-form-item>
       </a-form>
@@ -50,15 +81,18 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
-import type { FormInstance } from 'ant-design-vue'
+import type { FormInstance, UploadProps } from 'ant-design-vue'
+import { CameraOutlined, LoadingOutlined } from '@ant-design/icons-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
-import { updateMyUser } from '@/api/userController'
+import { updateMyUser, uploadUserAvatar } from '@/api/userController'
+import { resolveAvatarUrl } from '@/config/env'
 
 const router = useRouter()
 const loginUserStore = useLoginUserStore()
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const avatarUploading = ref(false)
 
 // 表单只包含允许用户自己修改的字段（账号、角色由后端控制，不放在这里）
 const formData = reactive({
@@ -68,13 +102,13 @@ const formData = reactive({
 })
 
 const isAdmin = computed(() => loginUserStore.loginUser.userRole === 'admin')
+const avatarPreviewUrl = computed(() => resolveAvatarUrl(formData.userAvatar))
 
 const rules = {
   userName: [
     { required: true, message: '请输入昵称', trigger: 'blur' },
     { min: 1, max: 30, message: '昵称长度需在 1-30 个字符之间', trigger: 'blur' },
   ],
-  userAvatar: [{ type: 'url', message: '请输入有效的图片链接', trigger: 'blur' }],
 }
 
 // 用当前登录态回填表单
@@ -86,7 +120,47 @@ const resetForm = () => {
   formRef.value?.clearValidate()
 }
 
+const beforeAvatarUpload: UploadProps['beforeUpload'] = (file) => {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+  if (!allowedTypes.includes(file.type)) {
+    message.error('仅支持 JPG、PNG、WebP、GIF 格式的图片')
+    return false
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    message.error('头像图片不能超过 5MB')
+    return false
+  }
+  return true
+}
+
+const handleAvatarUpload: UploadProps['customRequest'] = async (options) => {
+  const file = options.file as File
+  avatarUploading.value = true
+  try {
+    const res = await uploadUserAvatar(file)
+    if (res.data.code === 0 && res.data.data) {
+      formData.userAvatar = res.data.data
+      message.success('头像上传成功，请点击保存修改')
+      options.onSuccess?.(res.data)
+    } else {
+      const error = new Error(res.data.message || '头像上传失败')
+      message.error(error.message)
+      options.onError?.(error)
+    }
+  } catch (error) {
+    console.error('头像上传失败：', error)
+    message.error('头像上传失败，请重试')
+    options.onError?.(error as Error)
+  } finally {
+    avatarUploading.value = false
+  }
+}
+
 const handleSubmit = async () => {
+  if (avatarUploading.value) {
+    message.warning('头像上传中，请稍后再保存')
+    return
+  }
   submitting.value = true
   try {
     const res = await updateMyUser({
@@ -138,7 +212,9 @@ onMounted(() => {
   border: 1px solid rgba(164, 184, 232, 0.22);
   border-radius: 22px;
   background: rgba(22, 31, 60, 0.42);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.05), 0 24px 70px rgba(2, 5, 17, 0.35);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.05),
+    0 24px 70px rgba(2, 5, 17, 0.35);
   backdrop-filter: blur(12px);
 }
 
@@ -149,16 +225,77 @@ onMounted(() => {
   margin-bottom: 26px;
 }
 
+.avatar-upload-wrap {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+}
+
+.avatar-upload-wrap :deep(.ant-upload) {
+  display: block;
+  cursor: pointer;
+}
+
+.avatar-uploader {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.avatar-uploader :deep(.ant-avatar) {
+  display: block;
+  border: 1px solid rgba(202, 216, 255, 0.28);
+  box-shadow: 0 10px 28px rgba(3, 8, 25, 0.28);
+}
+
+.avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background: rgba(7, 13, 31, 0.64);
+  color: #f5f7ff;
+  font-size: 20px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.avatar-uploader:hover .avatar-overlay,
+.avatar-uploader.is-uploading .avatar-overlay {
+  opacity: 1;
+}
+
+.avatar-uploader.is-uploading {
+  cursor: wait;
+}
+
+.avatar-tip {
+  color: #8c9abc;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .profile-meta h2 {
   margin: 0 0 6px;
-  font: 600 22px/1.3 'Playfair Display', 'Noto Sans SC', serif;
+  font:
+    600 22px/1.3 'Playfair Display',
+    'Noto Sans SC',
+    serif;
   color: #f2f5ff;
 }
 
 .profile-account {
   margin: 0 0 8px;
   color: #8c9abc;
-  font: 11px 'DM Mono', monospace;
+  font:
+    11px 'DM Mono',
+    monospace;
   letter-spacing: 0.06em;
 }
 </style>

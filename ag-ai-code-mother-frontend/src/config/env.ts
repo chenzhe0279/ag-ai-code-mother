@@ -1,7 +1,7 @@
 /**
  * 环境变量配置
  */
-import {CodeGenTypeEnum} from "@/utils/codeGenTypes.ts";
+import { CodeGenTypeEnum } from '@/utils/codeGenTypes.ts'
 
 // 应用部署域名
 export const DEPLOY_DOMAIN = import.meta.env.VITE_DEPLOY_DOMAIN || 'http://localhost'
@@ -30,4 +30,22 @@ export const getStaticPreviewUrl = (
     return `${baseUrl}dist/index.html`
   }
   return baseUrl
+}
+
+/**
+ * 将后端返回的相对头像地址转换为浏览器可访问的地址。
+ * 兼容历史数据 /file/avatar/xxx.jpg 和新的 /api/file/avatar/xxx.jpg。
+ */
+export const resolveAvatarUrl = (avatarUrl?: string) => {
+  if (!avatarUrl) return ''
+  if (/^(https?:)?\/\//i.test(avatarUrl) || /^(data|blob):/i.test(avatarUrl)) {
+    return avatarUrl
+  }
+
+  const normalizedPath = avatarUrl.startsWith('/') ? avatarUrl : `/${avatarUrl}`
+  if (normalizedPath.startsWith('/api/')) {
+    return normalizedPath
+  }
+
+  return `${API_BASE_URL.replace(/\/$/, '')}${normalizedPath}`
 }

@@ -1,7 +1,7 @@
 package com.ag.agaicodemother.ai;
 
 
-import com.ag.agaicodemother.ai.tools.FileWriteTool;
+import com.ag.agaicodemother.ai.tools.*;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
 import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
@@ -95,7 +95,13 @@ public class AiCodeGeneratorServiceFactory {
             case VUE_PROJECT -> AiServices.builder(AiCodeGeneratorService.class)
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
-                    .tools(new FileWriteTool(versionId))
+                    .tools(
+                            new FileWriteTool(versionId),
+                            new FileReadTool(versionId),
+                            new FileModifyTool(versionId),
+                            new FileDeleteTool(versionId),
+                            new FileDirReadTool(versionId)
+                    )
                     .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                             toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()
                     ))
