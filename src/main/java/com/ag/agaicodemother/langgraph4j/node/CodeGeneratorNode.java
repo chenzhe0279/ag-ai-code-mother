@@ -40,6 +40,7 @@ public class CodeGeneratorNode {
             String generatedCodeDir = String.format("%s/%s_%s/%s_%s", AppConstant.CODE_OUTPUT_ROOT_DIR, generationType.getValue(), appId, AppConstant.CODE_VERSION_DIR_PREFIX, versionId);
             // 更新状态
             context.setCurrentStep("代码生成");
+            // 设置生成目录
             context.setGeneratedCodeDir(generatedCodeDir);
             log.info("代码生成完成，目录: {}", generatedCodeDir);
             return WorkflowContext.saveContext(context);
