@@ -99,7 +99,7 @@ public class LogoGeneratorTool {
                 return null;
             }
             // 构建 COS 对象键，格式：/logo/{随机串}/{唯一文件名}
-            String keyName = String.format("/mermaid/%s/%s",
+            String keyName = String.format("/logo/%s/%s",
                     RandomUtil.randomString(5),
                     tempFile.getName());
             // 上传本地临时文件到 COS，返回永久访问地址
