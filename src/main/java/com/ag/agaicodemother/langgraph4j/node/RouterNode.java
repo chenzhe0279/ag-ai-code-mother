@@ -33,6 +33,7 @@ public class RouterNode {
             }
             // 更新状态
             context.setCurrentStep("智能路由");
+            // 设置生成类型
             context.setGenerationType(codeGenTypeEnum);
             return WorkflowContext.saveContext(context);
         });
