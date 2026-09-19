@@ -185,8 +185,11 @@ const viewAppChat = (appId: number | undefined) => {
 <style scoped>
 #chatManagePage {
   padding: 24px;
-  background: white;
   margin-top: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: rgba(13, 20, 42, 0.55);
+  backdrop-filter: blur(12px);
 }
 
 .message-text {

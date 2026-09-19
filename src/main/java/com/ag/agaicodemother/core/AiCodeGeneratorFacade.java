@@ -9,6 +9,8 @@ import com.ag.agaicodemother.ai.model.MultiFileCodeResult;
 import com.ag.agaicodemother.ai.model.message.AiResponseMessage;
 import com.ag.agaicodemother.ai.model.message.ToolExecutedMessage;
 import com.ag.agaicodemother.ai.model.message.ToolRequestMessage;
+import com.ag.agaicodemother.constant.AppConstant;
+import com.ag.agaicodemother.core.builder.VueProjectBuilder;
 import com.ag.agaicodemother.core.parser.CodeParserExecutor;
 import com.ag.agaicodemother.core.saver.CodeFileSaverExecutor;
 import com.ag.agaicodemother.exception.BusinessException;
@@ -34,6 +36,8 @@ public class AiCodeGeneratorFacade {
     @Resource
     private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
+    @Resource
+    private VueProjectBuilder vueProjectBuilder;
 
     /**
      * 统一入口：根据类型生成并保存代码（非流式）
@@ -105,7 +109,7 @@ public class AiCodeGeneratorFacade {
                 // 获取多文件代码流
                 TokenStream tokenStream = aiCodeGeneratorService.generateVueProjectCodeStream(appId,userMessage);
                 // 交给通用流式处理方法，带上版本号
-                yield processTokenStream(tokenStream);
+                yield processTokenStream(tokenStream, appId, version);
             }
             default -> {
                 // 不支持的生成类型
@@ -121,7 +125,7 @@ public class AiCodeGeneratorFacade {
      * @param tokenStream TokenStream 对象
      * @return Flux<String> 流式响应
      */
-    private Flux<String> processTokenStream(TokenStream tokenStream) {
+    private Flux<String> processTokenStream(TokenStream tokenStream, Long appId, Integer version) {
         return Flux.create(sink -> {
             tokenStream
                 // 注册流式部分响应回调：模型每生成一个文本片段就会触发一次
@@ -149,6 +153,9 @@ public class AiCodeGeneratorFacade {
                 })
                 // 注册完整响应完成回调：整个 AI 响应生命周期正常结束时触发一次
                 .onCompleteResponse((ChatResponse response) -> {
+                    // 执行 Vue 项目构建（同步执行，确保预览时项目已就绪）
+                    String projectPath = AppConstant.CODE_OUTPUT_ROOT_DIR + "/vue_project_" + appId + "/" + AppConstant.CODE_VERSION_DIR_PREFIX + version;
+                    vueProjectBuilder.buildProject(projectPath);
                     // response 为完整聊天响应对象，此处无需再向下游传内容
                     // 主动调用 complete 结束 Flux，通知前端流式响应已正常完成
                     sink.complete();

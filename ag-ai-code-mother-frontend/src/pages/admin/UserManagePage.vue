@@ -323,8 +323,11 @@ onMounted(() => {
 <style scoped>
 #userManagePage {
   padding: 24px;
-  background: white;
   margin-top: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  background: rgba(13, 20, 42, 0.55);
+  backdrop-filter: blur(12px);
 }
 
 .table-toolbar {
@@ -336,6 +339,6 @@ onMounted(() => {
 }
 
 .text-gray {
-  color: #999;
+  color: #8c9abc;
 }
 </style>

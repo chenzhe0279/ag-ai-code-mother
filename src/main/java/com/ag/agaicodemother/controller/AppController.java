@@ -30,6 +30,7 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -361,6 +362,11 @@ public class AppController {
      * @param request         请求对象（用于识别当前用户身份，未登录按游客处理）
      * @return 精选应用列表
      */
+    @Cacheable(
+            value = "good_app_page",
+            key = "T(com.ag.agaicodemother.utils.CacheKeyUtils).generateKey(#appQueryRequest)",
+            condition = "#appQueryRequest.pageNum <= 10"
+    )
     @PostMapping("/good/list/page/vo")
     public BaseResponse<Page<AppVO>> listGoodAppVOByPage(@RequestBody AppQueryRequest appQueryRequest,
                                                          HttpServletRequest request) {
@@ -376,11 +382,7 @@ public class AppController {
         // 根据查询请求构造基础查询条件（名称模糊、类型、优先级等）
         QueryWrapper queryWrapper = appService.getQueryWrapper(appQueryRequest);
         // ==================== 可见范围权限过滤 ====================
-        User loginUser = null;
-        try {
-            loginUser = userService.getLoginUser(request);
-        } catch (BusinessException e) {
-        }
+        User loginUser = userService.getLoginUser(request);
         boolean isAdmin = loginUser != null && UserConstant.ADMIN_ROLE.equals(loginUser.getUserRole());
         if (!isAdmin) {
             if (loginUser != null) {
