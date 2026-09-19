@@ -7,6 +7,7 @@ import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
 import com.ag.agaicodemother.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.ag.agaicodemother.ai.AiCodeGeneratorService;
+import com.ag.agaicodemother.ai.AiCodeGeneratorServiceFactory;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.constant.UserConstant;
 import com.ag.agaicodemother.core.AiCodeGeneratorFacade;
@@ -66,8 +67,10 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
     @Resource
     private AiCodeGeneratorFacade aiCodeGeneratorFacade;
 
+    //@Resource
+    //private AiCodeGeneratorService aiCodeGeneratorService;
     @Resource
-    private AiCodeGeneratorService aiCodeGeneratorService;
+    private AiCodeGeneratorServiceFactory aiCodeGeneratorServiceFactory;
 
     @Resource
     private ChatHistoryService chatHistoryService;
@@ -496,6 +499,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         String fallbackName = initPrompt.substring(0, Math.min(initPrompt.length(), 12));
         try {
             // 调用 AI 服务生成名称
+            AiCodeGeneratorService aiCodeGeneratorService = aiCodeGeneratorServiceFactory.generateAppName();
             String appNameResult = aiCodeGeneratorService.generateAppName(initPrompt).getName();
             // 清洗 AI 输出：去引号、去空白、只取第一行
             String aiName = appNameResult == null ? null : cleanAiAppName(appNameResult);

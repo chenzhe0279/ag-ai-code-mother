@@ -17,7 +17,6 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.service.AiServices;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
@@ -78,12 +77,12 @@ public class AiCodeGeneratorServiceFactory {
         //获取缓存 Key
         String cacheKey = buildCacheKey(appId, codeGenType, versionId);
         //返回与 key 关联的值，如果不存在则通过 mappingFunction 计算并缓存后返回
-        return serviceCache.get(cacheKey, key -> createAiCodeGeneratorService(appId, codeGenType, versionId));
+        return serviceCache.get(cacheKey, key -> createAiCodeGeneratorService(appId, codeGenType));
     }
     /**
      * 创建新的 AI 服务实例
      */
-    private AiCodeGeneratorService createAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType, Integer versionId) {
+    private AiCodeGeneratorService createAiCodeGeneratorService(long appId, CodeGenTypeEnum codeGenType) {
         // 根据 appId 构建独立的对话记忆
         MessageWindowChatMemory chatMemory = MessageWindowChatMemory
                 .builder()
@@ -133,8 +132,8 @@ public class AiCodeGeneratorServiceFactory {
      * 即使本 Bean 只调用 generateAppName 也必须提供，否则构建期直接抛异常
      * @return
      */
-   @Bean
-    public AiCodeGeneratorService aiCodeGeneratorService(){
+
+    public AiCodeGeneratorService generateAppName(){
        // 使用多例模式的 StreamingChatModel 解决并发问题
        StreamingChatModel openAiStreamingChatModel = SpringContextUtil.getBean("streamingChatModelPrototype", StreamingChatModel.class);
        return AiServices.builder(AiCodeGeneratorService.class)
@@ -149,7 +148,6 @@ public class AiCodeGeneratorServiceFactory {
                        .build())
                .build();
     }
-
     /**
      * 构造缓存 Key
      * @param appId
