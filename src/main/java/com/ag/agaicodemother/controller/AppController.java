@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.ag.agaicodemother.ai.AiCodeGenTypeRoutingService;
+import com.ag.agaicodemother.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.ag.agaicodemother.ai.AiCodeGeneratorService;
 import com.ag.agaicodemother.annotation.AuthCheck;
 import com.ag.agaicodemother.common.BaseResponse;
@@ -64,8 +65,9 @@ public class AppController {
     @Resource
     private ProjectDownloadService projectDownloadService;
 
+
     @Resource
-    private AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService;
+    private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
     /**
      * 应用聊天生成代码（流式 SSE）
      *
@@ -135,8 +137,9 @@ public class AppController {
         app.setUserId(loginUser.getId());
         // 调用大模型根据初始描述自动生成应用名称（失败时兜底为 initPrompt 前 12 位）
         app.setAppName(appService.generateAppNameByAi(initPrompt));
-        //使用 AI 智能选择代码生成类型
-        CodeGenTypeEnum codeGenTypeEnum = aiCodeGenTypeRoutingService.routeCodeGenType(initPrompt);
+        // 使用 AI 智能选择代码生成类型（多例模式）
+        AiCodeGenTypeRoutingService routingService = aiCodeGenTypeRoutingServiceFactory.createAiCodeGenTypeRoutingService();
+        CodeGenTypeEnum codeGenTypeEnum = routingService.routeCodeGenType(initPrompt);
         app.setCodeGenType(codeGenTypeEnum.getValue());
         // ==================== 可见范围处理 ====================
         String visibility = appAddRequest.getVisibility();

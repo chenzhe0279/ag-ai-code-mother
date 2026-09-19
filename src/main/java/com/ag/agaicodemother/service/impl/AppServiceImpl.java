@@ -5,6 +5,7 @@ import cn.hutool.core.collection.CollUtil;
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.RandomUtil;
 import cn.hutool.core.util.StrUtil;
+import com.ag.agaicodemother.ai.AiCodeGenTypeRoutingServiceFactory;
 import com.ag.agaicodemother.ai.AiCodeGeneratorService;
 import com.ag.agaicodemother.constant.AppConstant;
 import com.ag.agaicodemother.constant.UserConstant;
@@ -79,6 +80,8 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
 
     @Resource
     private ScreenshotService screenshotService;
+
+
 
     /** 预编译正则：匹配版本目录名 v1、v2、v10...（v 后必须全为数字，防止误匹配其他目录） */
     private static final Pattern VERSION_DIR_PATTERN = Pattern.compile("^v(\\d+)$");
