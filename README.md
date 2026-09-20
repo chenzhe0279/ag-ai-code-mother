@@ -1,4 +1,4 @@
-# REMAD.md — AI 零代码应用生成平台项目说明
+# README.md — AI 零代码应用生成平台项目说明
 
 > 一句话定位：用户用自然语言描述需求，平台让 AI 直接生成可运行的网页应用（HTML 单页 / 多文件页面 / Vue 工程），支持**对话式迭代修改、多版本管理、一键预览、一键部署、版本回退**。
 >
@@ -8,13 +8,14 @@
 
 ## 1. 60 秒看懂后端（TL;DR）
 
-后端只围绕三张表（`user` / `app` / `chat_history`）和两个磁盘目录（`tmp/code_output`、`tmp/code_deploy`）展开，核心链路一句话：
+后端只围绕四张表（`user` / `app` / `chat_history` / `safety_review_record`）和两个磁盘目录（`tmp/code_output`、`tmp/code_deploy`）展开，核心链路一句话：
 
-**创建应用（AI 起名 + AI 选生成类型） → 对话生成代码（SSE 流式，AI 直接写文件或输出代码块） → 流结束后解析保存为版本目录 v1/v2/... → 静态预览 → 部署（Vue 先 npm build）→ 异步截图当封面 → 支持回退/下线/删除。**
+**创建应用（内容安全检测 + AI 起名 + AI 选生成类型） → 对话生成代码（内容安全检测 → SSE 流式，AI 直接写文件或输出代码块） → 流结束后解析保存为版本目录 v1/v2/... → 静态预览 → 部署（Vue 先 npm build）→ 异步截图当封面 → 支持回退/下线/删除。**
 
 ```mermaid
 flowchart LR
-    A["用户输入需求"] --> B["POST /app/add<br/>AI 生成应用名<br/>AI 路由选择生成类型"]
+    A["用户输入需求"] --> S["内容安全检测<br/>静态关键词 + AI 语义双层"]
+    S --> B["POST /app/add<br/>AI 生成应用名<br/>AI 路由选择生成类型"]
     B --> C["GET /app/chat/gen/code (SSE)<br/>对话式生成代码"]
     C --> D{"生成类型"}
     D -->|HTML| E["AI 输出单文件<br/>解析器提取 → 保存"]
@@ -55,9 +56,9 @@ flowchart LR
 
 | 包 | 职责 | 关键类 |
 | --- | --- | --- |
-| `controller` | HTTP 入口 | `AppController`（核心）、`UserController`、`ChatHistoryController`、`StaticResourceController`、`HealthController` |
-| `service` / `service.impl` | 业务逻辑 | `AppServiceImpl`（应用全生命周期）、`ChatHistoryServiceImpl`、`UserServiceImpl`、`ScreenshotServiceImpl`、`ProjectDownloadServiceImpl` |
-| `ai` | AI 服务定义与工厂 | `AiCodeGeneratorService`（@SystemMessage 声明式 AI 接口）、`AiCodeGeneratorServiceFactory`（实例缓存 + 记忆 + 工具装配）、`AiCodeGenTypeRoutingService`（类型智能路由） |
+| `controller` | HTTP 入口 | `AppController`（核心）、`UserController`、`ChatHistoryController`、`StaticResourceController`、`SafetyReviewController`、`HealthController` |
+| `service` / `service.impl` | 业务逻辑 | `AppServiceImpl`（应用全生命周期）、`ChatHistoryServiceImpl`、`UserServiceImpl`、`ScreenshotServiceImpl`、`ProjectDownloadServiceImpl`、`ContentSafetyServiceImpl`（内容安全）、`SafetyReviewRecordServiceImpl`（审查记录） |
+| `ai` | AI 服务定义与工厂 | `AiCodeGeneratorService`（@SystemMessage 声明式 AI 接口）、`AiCodeGeneratorServiceFactory`（实例缓存 + 记忆 + 工具装配）、`AiCodeGenTypeRoutingService`（类型智能路由）、`SensitiveContentCheckService`（敏感内容语义检测） |
 | `ai.tools` | AI 可调用的工具 | `ToolManager` + `BaseTool` 五件套：写文件/改文件/读文件/读目录/删文件 |
 | `core` | 生成编排门面 | `AiCodeGeneratorFacade`（统一生成+保存入口） |
 | `core.parser` | 代码解析器 | `HtmlCodeParser`、`MultiFileCodeParser`、`CodeParserExecutor`（策略模式） |
@@ -65,11 +66,11 @@ flowchart LR
 | `core.handler` | 流式响应处理器 | `StreamHandlerExecutor` 按类型分发：`SimpleTextStreamHandler`（HTML/多文件）、`JsonMessageStreamHandler`（Vue 工程含工具调用） |
 | `core.builder` | 项目构建 | `VueProjectBuilder`（npm install + npm run build，带超时） |
 | `langgraph4j` | 工作流引擎 | `CodeGenWorkflow` + 5 个节点（图片收集→提示词增强→路由→生成→构建） |
-| `model` | 实体 / DTO / VO / 枚举 | `App`、`ChatHistory`、`User`；`CodeGenTypeEnum` 等状态枚举 |
+| `model` | 实体 / DTO / VO / 枚举 | `App`、`ChatHistory`、`User`、`SafetyReviewRecord`；`CodeGenTypeEnum` 等状态枚举 |
 | `aop` / `annotation` | 权限 | `@AuthCheck(mustRole)` + `AuthInterceptor`（管理端接口统一校验） |
 | `manager` / `utils` | 外部能力 | `CosManager`（COS 上传）、`WebScreenshotUtils`（Selenium 截图压缩） |
 | `common` / `exception` | 横切 | `BaseResponse` 统一响应、全局异常处理器、`ThrowUtils` 断言 |
-| `resources/prompt` | AI 提示词 | 五个 system prompt 文件（HTML / 多文件 / Vue 工程 / 类型路由 / 应用起名 / 图片收集） |
+| `resources/prompt` | AI 提示词 | system prompt 文件（HTML / 多文件 / Vue 工程 / 类型路由 / 应用起名 / 图片收集 / 敏感内容检测 / 代码质量检查） |
 | `dev.langchain4j.*`（源码内） | 库补丁 | 同包名覆盖 LangChain4j 少量内部类，定制流式工具调用行为 |
 
 ---
@@ -81,7 +82,7 @@ flowchart LR
 - 注册：账号 >= 4 位、密码 >= 8 位、两次一致、账号唯一；密码 = `MD5(盐"ag" + 密码)`；默认角色 `user`。
 - 登录：校验后把 `User` 写入 Session（属性 `USER_LOGIN_STATE`）。Spring Session 已切到 Redis，**30 天有效**，重启后端不掉登录态。
 - 鉴权：业务接口在方法内手动调 `userService.getLoginUser(request)` 做身份/归属校验；管理端接口用 `@AuthCheck(mustRole = "admin")` + AOP 统一拦截。
-- 头像上传：限制 5MB、jpg/jpeg/png/gif/webp，UUID 重命名存到 `tmp/avatar/`，返回 `/api/file/avatar/xxx`（注意：当前代码里**没有**对应的静态资源映射，需要自行补一个 resource handler 或改走 COS，见第 11 节）。
+- 头像上传：限制 5MB、jpg/jpeg/png/gif/webp，UUID 重命名存到 `tmp/avatar/`，返回 `/api/avatar/xxx`（`WebMvcConfig` 已注册 `/avatar/**` → `tmp/avatar/` 的静态资源映射，可直接访问）。
 
 ### 4.2 创建应用：AI 起名 + AI 智能路由
 
@@ -183,7 +184,7 @@ tmp/code_output/{type}_{appId}/
 - **预览**：`GET /api/static/{type}_{appId}/v{n}/**` 直接从 `tmp/code_output` 读文件，目录访问自动兜底 `index.html`，HTML/CSS/JS 显式 UTF-8 防乱码。部署后的访问不走这个接口（走外部静态主机）。
 - **可见性**：应用分 `public`/`private`。详情接口：本人和管理员看一切；其他人/游客只能看公开的，私有应用直接报无权限。
 - **我的应用列表**：只查自己的，每页最多 20。
-- **精选列表**：固定查 `priority >= 99`（精选 99、置顶 999 都算），按优先级倒序——置顶永远排最前。游客只能看到公开精选。
+- **精选列表**：固定查 `priority >= 99`（精选 99、置顶 999 都算），按优先级倒序——置顶永远排最前。游客只能看到公开精选。该接口挂了 **Redis 缓存**（`@Cacheable("good_app_page")`，key 由 `CacheKeyUtils` 按查询参数生成，仅缓存前 10 页，TTL 30 分钟，见 `RedisCacheManagerConfig`），管理端对应用的增删改会更新数据但当前**没有**主动清除该缓存，最长 30 分钟后自动过期。
 - **置顶/取消置顶**：`priority` 置 999 / 复位 0，纯排序技巧。
 - **标签**：最多 3 个、单个 <= 20 字符、逗号分隔存储，查询用 LIKE 模糊匹配。
 - **删除**（本人或管理员）：先删对话历史 → 逻辑删除应用记录 → 尽力清理版本目录和部署目录（清理失败只记日志，不阻塞主流程）。
@@ -220,6 +221,27 @@ START → 图片收集（AI 挑选配图 URL） → 提示词增强（把素材�
 - CORS 全放行（含 Cookie），生产环境应收紧。
 - 生成代码、部署产物、头像、截图临时文件全部集中在项目运行目录的 `tmp/` 下，方便整体清理。
 
+### 4.12 内容安全与审查记录（双层检测 + 审计）
+
+用户输入在进入 AI 生成链路**之前**会过一道内容安全检测（`ContentSafetyServiceImpl`），挂载了两个入口：`/app/add` 的初始描述、`/chat/gen/code` 的每轮对话消息。
+
+```
+用户消息 → ① 静态检测（敏感词表 + 注入正则，毫秒级零成本）
+             ├─ 命中 → 写审查记录(static/blocked) → 拦截
+             └─ 未命中 → ② AI 语义检测（独立模型，结构化输出）
+                           ├─ 判定敏感 → 写审查记录(ai/blocked) → 拦截
+                           ├─ 判定安全 → 放行，进入正常生成流程
+                           └─ 调用失败/超时 → 降级放行 + 写审查记录(ai/failed_open)
+```
+
+要点：
+
+1. **AI 检测是独立配置的模型**：`SensitiveContentCheckChatModelConfig`（前缀 `langchain4j.open-ai.sensitive-content-check-chat-model`）定义 prototype 级非流式 `ChatModel`，由 `SensitiveContentCheckServiceFactory` 装配成 `SensitiveContentCheckService`。和主生成模型、路由模型完全隔离，可单独换便宜/快速的模型。**必须是非流式 `ChatModel`**——langchain4j 的结构化输出（返回 `SensitiveCheckResult` POJO：sensitive/category/riskLevel/reason）不支持流式模型。
+2. **拦截方式与 SSE 错误协议闭环**：命中抛 `BusinessException(SENSITIVE_CONTENT=40302)` → 全局异常处理器识别 SSE 请求后发送 `event: business-error` → 前端 `AppChatPage.vue` 已有监听，直接把错误消息展示为 ❌ 气泡。
+3. **审查记录表 `safety_review_record`**：记录 userId、appId、userMessage（截断）、detectionType（static/ai）、triggerRule（命中规则）、riskCategory/riskLevel/aiReason（AI 判定）、handleResult（blocked 已拦截 / failed_open 检测异常降级放行）、clientIp（解析 X-Forwarded-For）。落库失败只记日志不影响主流程；`failed_open` 专门用于观察检测服务的健康度。`/app/add` 的检测特意放在事务方法之前执行，避免拦截异常连带回滚、丢失审计记录。
+4. **纵深防御**：langchain4j 模型调用层的 `PromptSafetyInputGuardrail`（静态护栏）保留不动，作为检测漏斗之后的第二道防线。
+5. 管理端分页查询：`POST /api/safetyReview/list/page`（仅 admin），支持按用户/应用/检测方式/处理结果过滤。
+
 ---
 
 ## 5. API 速查表
@@ -251,6 +273,10 @@ START → 图片收集（AI 挑选配图 URL） → 提示词增强（把素材�
 
 `GET /app/{appId}` 游标分页（本人或管理员）；`POST /admin/list/page/vo` 管理端分页。
 
+### 内容安全审查记录 `/api/safetyReview`（仅管理员）
+
+`POST /list/page` 审查记录分页查询（支持按 userId / appId / detectionType / handleResult 过滤）。
+
 ### 其他
 
 `GET /api/static/{type}_{appId}/v{n}/**` 预览生成产物；`GET /api/health/` 健康检查。
@@ -264,6 +290,8 @@ erDiagram
     user ||--o{ app : "创建"
     app ||--o{ chat_history : "对话"
     user ||--o{ chat_history : "发送"
+    user ||--o{ safety_review_record : "触发"
+    app ||--o{ safety_review_record : "关联"
 ```
 
 | 表 | 关键字段 | 说明 |
@@ -271,6 +299,7 @@ erDiagram
 | `user` | userAccount(唯一)、userPassword、userRole、isVip 等 | 逻辑删除；密码 MD5+盐 |
 | `app` | initPrompt、codeGenType、**currentVersion**、deployKey(唯一)、deployStatus、genStatus、visibility、tags、priority | `currentVersion` 既是计数器又是"当前生效版本"指针；`genStatus` 驱动前端轮询；`deployKey` 保证部署 URL 稳定 |
 | `chat_history` | appId、message、messageType(user/ai)、createTime | `(appId, createTime)` 复合索引支撑游标分页 |
+| `safety_review_record` | userId、appId、userMessage、detectionType、triggerRule、riskCategory、riskLevel、aiReason、handleResult、clientIp | 内容安全审查记录；detectionType 区分 static/ai，handleResult 区分 blocked/failed_open；见 4.12 |
 
 建表脚本：`sql/create_table.sql`（文末附有增量迁移 ALTER 语句）。注意：脚本里"复制式回退"的注释是早期方案，**当前代码实现的是指针式回退**，以代码为准。
 
@@ -342,7 +371,8 @@ npm run dev
 
 ## 11. 已知注意事项
 
-- 头像上传返回的 `/api/file/avatar/**` 目前**没有**对应的静态资源映射类，需要补一个 `WebMvcConfigurer#addResourceHandlers` 或改走 COS。
 - Vue 项目构建依赖本机 npm 环境与网络（npm install）；部署超时已设 5+3 分钟。
+- 精选应用列表的 Redis 缓存 key 只含查询参数、不含用户身份，且应用增删改时未主动清除——管理端改完精选应用最长 30 分钟才对前台可见；如需即时生效可在管理端更新入口加 `@CacheEvict`。
 - 生产环境需要收紧 CORS（当前全放行）、更换 MD5+盐为 BCrypt 等更强哈希、把数据库/Redis 密码移出配置文件。
 - `dev/langchain4j/` 目录是对 LangChain4j 内部类的同包名补丁，升级 LangChain4j 版本时需要回归验证流式工具调用。
+- AI 敏感内容检测会给 `/app/add` 和 `/chat/gen/code` 各增加一次大模型调用的时延（约 1~3 秒）；检测失败默认降级放行（写入 `failed_open` 记录），如合规要求更严可改为失败即拦截。
