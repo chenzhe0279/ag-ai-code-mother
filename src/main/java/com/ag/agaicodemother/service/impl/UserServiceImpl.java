@@ -9,6 +9,7 @@ import com.ag.agaicodemother.constant.FileConstant;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
 import com.ag.agaicodemother.exception.ThrowUtils;
+import com.ag.agaicodemother.manager.CosManager;
 import com.ag.agaicodemother.model.dto.user.UserQueryRequest;
 import com.ag.agaicodemother.model.enums.UserRoleEnum;
 import com.ag.agaicodemother.model.vo.LoginUserVO;
@@ -18,6 +19,7 @@ import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.ag.agaicodemother.model.entity.User;
 import com.ag.agaicodemother.mapper.UserMapper;
 import com.ag.agaicodemother.service.UserService;
+import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -46,6 +48,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
     private static final Set<String> ALLOWED_AVATAR_EXTS = Set.of("jpg", "jpeg", "png", "gif", "webp");
 
     private static final long MAX_AVATAR_SIZE = 5 * 1024 * 1024L;
+
 
     @Override
     public long userRegister(String userAccount, String userPassword, String checkPassword) {
@@ -129,16 +132,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>  implements U
         // 构造目标文件对象
         File dest = new File(dir, fileName);
         try {
-            // 将上传的文件保存到目标位置
             file.transferTo(dest);
         } catch (IOException e) {
             // 记录保存失败日志并抛出系统错误异常
             log.error("头像保存失败", e);
             throw new BusinessException(ErrorCode.SYSTEM_ERROR, "头像保存失败");
         }
-
-        // 构造头像访问 URL
-        String avatarUrl = request.getContextPath() + "/file/avatar/" + fileName;
+        String avatarUrl = request.getContextPath() + "/avatar/" + fileName;
         // 创建待更新的用户对象，只设置 id 和新头像地址
         User upLoadUser = new User();
         upLoadUser.setId(user.getId());
