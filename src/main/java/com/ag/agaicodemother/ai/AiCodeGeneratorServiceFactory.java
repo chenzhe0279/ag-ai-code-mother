@@ -1,6 +1,7 @@
 package com.ag.agaicodemother.ai;
 
 
+import com.ag.agaicodemother.ai.guardrail.PromptSafetyInputGuardrail;
 import com.ag.agaicodemother.ai.tools.*;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
@@ -102,6 +103,8 @@ public class AiCodeGeneratorServiceFactory {
                     .streamingChatModel(reasoningStreamingChatModel)
                     .chatMemoryProvider(memoryId -> chatMemory)
                     .tools(toolManager.getAllTools())
+                    //添加输入护轨
+                    .inputGuardrails(new PromptSafetyInputGuardrail())
                     //处理工具调用幻觉问题
                     .hallucinatedToolNameStrategy(toolExecutionRequest -> ToolExecutionResultMessage.from(
                             toolExecutionRequest, "Error: there is no tool called " + toolExecutionRequest.name()
@@ -116,6 +119,8 @@ public class AiCodeGeneratorServiceFactory {
                     .chatModel(chatModel)
                     .streamingChatModel(openAiStreamingChatModel)
                     .chatMemory(chatMemory)
+                    //添加输入护轨
+                    .inputGuardrails(new PromptSafetyInputGuardrail())
                     .build();
             }
             default -> throw new BusinessException(ErrorCode.SYSTEM_ERROR,
