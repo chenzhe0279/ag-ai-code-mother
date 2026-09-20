@@ -96,3 +96,30 @@ ALTER TABLE app
 
 ALTER TABLE app
     ADD COLUMN genStatus VARCHAR(32) NOT NULL DEFAULT 'not_start' COMMENT '生成状态：not_start未开始/generating生成中/succeeded已成功/failed失败' AFTER codeGenType;
+
+
+-- 内容安全审查记录表
+use ag_ai_code_mother;
+
+create table if not exists safety_review_record
+(
+    id            bigint auto_increment comment 'id' primary key,
+    userId        bigint                             not null comment '触发用户id',
+    appId         bigint                             null comment '关联应用id',
+    userMessage   text                               null comment '用户输入内容（截断存储）',
+    detectionType varchar(32)                        not null comment '检测方式：static静态关键词/ai大模型',
+    triggerRule   varchar(512)                       null comment '命中的规则或关键词',
+    riskCategory  varchar(64)                        null comment '风险类别（AI判定）：prompt_injection/illegal/pornography/violence/privacy/other',
+    riskLevel     varchar(32) default 'high'         not null comment '风险等级：high/medium/low',
+    aiReason      text                               null comment 'AI判定理由',
+    handleResult  varchar(32)                        not null comment '处理结果：blocked已拦截/failed_open检测异常降级放行',
+    clientIp      varchar(64)                        null comment '客户端IP',
+    editTime      datetime default CURRENT_TIMESTAMP not null comment '编辑时间',
+    createTime    datetime default CURRENT_TIMESTAMP not null comment '创建时间',
+    updateTime    datetime default CURRENT_TIMESTAMP not null on update CURRENT_TIMESTAMP comment '更新时间',
+    isDelete      tinyint   default 0                not null comment '是否删除',
+    INDEX idx_userId (userId),
+    INDEX idx_appId (appId),
+    INDEX idx_detectionType (detectionType),
+    INDEX idx_createTime (createTime)
+) comment '内容安全审查记录' collate = utf8mb4_unicode_ci;
