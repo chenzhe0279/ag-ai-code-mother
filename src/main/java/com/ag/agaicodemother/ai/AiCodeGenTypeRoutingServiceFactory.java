@@ -30,9 +30,9 @@ public class AiCodeGenTypeRoutingServiceFactory {
     /**
      * 默认提供一个 Bean
      */
-    @Bean
+    /*@Bean
     public AiCodeGenTypeRoutingService aiCodeGenTypeRoutingService() {
         return createAiCodeGenTypeRoutingService();
-    }
+    }*/
 }
 

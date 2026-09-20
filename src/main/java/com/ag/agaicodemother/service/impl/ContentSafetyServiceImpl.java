@@ -2,6 +2,7 @@ package com.ag.agaicodemother.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.ag.agaicodemother.ai.SensitiveContentCheckService;
+import com.ag.agaicodemother.ai.SensitiveContentCheckServiceFactory;
 import com.ag.agaicodemother.ai.model.SensitiveCheckResult;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
@@ -66,7 +67,7 @@ public class ContentSafetyServiceImpl implements ContentSafetyService {
     );
 
     @Resource
-    private SensitiveContentCheckService sensitiveContentCheckService;
+    private SensitiveContentCheckServiceFactory sensitiveContentCheckServiceFactory;
 
     @Resource
     private SafetyReviewRecordService safetyReviewRecordService;
@@ -97,6 +98,7 @@ public class ContentSafetyServiceImpl implements ContentSafetyService {
         SensitiveCheckResult result;
         try {
             // 同步调用大模型，直接阻塞等待检测结果
+            SensitiveContentCheckService sensitiveContentCheckService = sensitiveContentCheckServiceFactory.createAiCodeGenTypeRoutingService();
             result = sensitiveContentCheckService.checkContent(message);
         } catch (Exception e) {
             // 异常：降级放行（fail-open），记录审计，避免大模型抖动阻断正常业务

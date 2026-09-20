@@ -30,9 +30,9 @@ public class SensitiveContentCheckServiceFactory {
     /**
      * 默认提供一个 Bean
      */
-    @Bean
+    /*@Bean
     public SensitiveContentCheckService sensitiveContentCheckService() {
         return createAiCodeGenTypeRoutingService();
-    }
+    }*/
 }
 
