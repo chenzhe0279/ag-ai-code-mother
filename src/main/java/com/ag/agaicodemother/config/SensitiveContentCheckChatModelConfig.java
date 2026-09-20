@@ -1,7 +1,7 @@
 package com.ag.agaicodemother.config;
 
-import dev.langchain4j.model.chat.StreamingChatModel;
-import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
+import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.openai.OpenAiChatModel;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -27,10 +27,14 @@ public class SensitiveContentCheckChatModelConfig {
 
     private Boolean logResponses = false;
 
+    /**
+     * 创建用于 AI 敏感内容检测的 ChatModel
+     * 注意：必须是非流式 ChatModel，langchain4j 的结构化输出（POJO 返回）不支持 StreamingChatModel
+     */
     @Bean
     @Scope("prototype")
-    public StreamingChatModel SensitiveContentCheckChatModelPrototype() {
-        return OpenAiStreamingChatModel.builder()
+    public ChatModel sensitiveContentCheckChatModelPrototype() {
+        return OpenAiChatModel.builder()
                 .apiKey(apiKey)
                 .baseUrl(baseUrl)
                 .modelName(modelName)

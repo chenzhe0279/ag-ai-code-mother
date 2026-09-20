@@ -21,9 +21,9 @@ public class SensitiveContentCheckServiceFactory {
      */
     public SensitiveContentCheckService createAiCodeGenTypeRoutingService() {
         // 动态获取多例的路由 ChatModel，支持并发
-        StreamingChatModel chatModel = SpringContextUtil.getBean("SensitiveContentCheckChatModelPrototype", StreamingChatModel.class);
+        ChatModel chatModel = SpringContextUtil.getBean("sensitiveContentCheckChatModelPrototype", ChatModel.class);
         return AiServices.builder(SensitiveContentCheckService.class)
-                .streamingChatModel(chatModel)
+                .chatModel(chatModel)
                 .build();
     }
 

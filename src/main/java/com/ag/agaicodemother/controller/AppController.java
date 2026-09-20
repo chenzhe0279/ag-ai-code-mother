@@ -26,6 +26,7 @@ import com.ag.agaicodemother.ratelimter.annotation.RateLimit;
 import com.ag.agaicodemother.ratelimter.enums.RateLimitType;
 import com.ag.agaicodemother.service.ProjectDownloadService;
 import com.ag.agaicodemother.service.UserService;
+import com.ag.agaicodemother.service.ContentSafetyService;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
 import jakarta.annotation.Resource;
@@ -71,6 +72,10 @@ public class AppController {
 
     @Resource
     private AiCodeGenTypeRoutingServiceFactory aiCodeGenTypeRoutingServiceFactory;
+
+    @Resource
+    private ContentSafetyService contentSafetyService;
+
     /**
      * 应用聊天生成代码（流式 SSE）
      *
@@ -89,6 +94,9 @@ public class AppController {
         ThrowUtils.throwIf(StrUtil.isBlank(message), ErrorCode.PARAMS_ERROR, "用户消息不能为空");
         // 获取当前登录用户
         User loginUser = userService.getLoginUser(request);
+        // 内容安全检测：静态预筛 + AI 语义检测，命中敏感内容抛异常拦截
+        // 必须放在事务方法 chatToGenCode 之前，否则拦截异常会连带回滚审查记录，丢失审计日志
+        contentSafetyService.checkContentSafety(message, loginUser, appId, request);
         // 调用服务生成代码（流式）
         Flux<String> contentFlux = appService.chatToGenCode(appId, message, loginUser);
         // 返回一个响应式流 Flux<ServerSentEvent<String>>，用于 SSE 推送
@@ -139,6 +147,9 @@ public class AppController {
         App app = new App();
         BeanUtil.copyProperties(appAddRequest, app);
         app.setUserId(loginUser.getId());
+        // 内容安全检测：静态预筛 + AI 语义检测，命中敏感内容抛异常拦截
+        // 必须放在事务方法 chatToGenCode 之前，否则拦截异常会连带回滚审查记录，丢失审计日志
+        contentSafetyService.checkContentSafety(initPrompt, loginUser, app.getId(), request);
         // 调用大模型根据初始描述自动生成应用名称（失败时兜底为 initPrompt 前 12 位）
         app.setAppName(appService.generateAppNameByAi(initPrompt));
         // 使用 AI 智能选择代码生成类型（多例模式）

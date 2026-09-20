@@ -5,22 +5,20 @@ import com.ag.agaicodemother.ai.SensitiveContentCheckService;
 import com.ag.agaicodemother.ai.model.SensitiveCheckResult;
 import com.ag.agaicodemother.exception.BusinessException;
 import com.ag.agaicodemother.exception.ErrorCode;
+import com.ag.agaicodemother.model.entity.SafetyReviewRecord;
 import com.ag.agaicodemother.model.entity.User;
 import com.ag.agaicodemother.service.ContentSafetyService;
-import dev.langchain4j.model.chat.ChatModel;
-import dev.langchain4j.service.AiServices;
-import jakarta.annotation.PostConstruct;
+import com.ag.agaicodemother.service.SafetyReviewRecordService;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -33,8 +31,20 @@ public class ContentSafetyServiceImpl implements ContentSafetyService {
     /** 消息内容入库时截断的最大长度 */
     private static final int MAX_RECORD_MESSAGE_LENGTH = 2000;
 
-    /** AI 检测超时时间（秒），超时降级放行 */
-    private static final long AI_CHECK_TIMEOUT_SECONDS = 10;
+    /** 检测方式：静态关键词 */
+    private static final String DETECTION_TYPE_STATIC = "static";
+
+    /** 检测方式：AI 大模型 */
+    private static final String DETECTION_TYPE_AI = "ai";
+
+    /** 处理结果：已拦截 */
+    private static final String HANDLE_RESULT_BLOCKED = "blocked";
+
+    /** 处理结果：检测异常降级放行 */
+    private static final String HANDLE_RESULT_FAILED_OPEN = "failed_open";
+
+    /** 静态命中时默认的风险等级 */
+    private static final String RISK_LEVEL_HIGH = "high";
 
     /**
      * 静态敏感词（与 PromptSafetyInputGuardrail 同源维护，作为第一层快速预筛）
@@ -55,119 +65,138 @@ public class ContentSafetyServiceImpl implements ContentSafetyService {
             Pattern.compile("(?i)new\\s+(?:instructions?|commands?|prompts?)\\s*:")
     );
 
-
-
-
-    /**
-     * AI 检测服务（启动时构建一次，避免每次请求重复构建）
-     */
+    @Resource
     private SensitiveContentCheckService sensitiveContentCheckService;
 
+    @Resource
+    private SafetyReviewRecordService safetyReviewRecordService;
 
     @Override
     public void checkContentSafety(String message, User loginUser, Long appId, HttpServletRequest request) {
-        // 第一层：静态关键词/注入模式快速预筛
-        Optional<StaticHit> staticHit = staticCheck(message);
-        if (staticHit.isPresent()) {
-            StaticHit hit = staticHit.get();
-            saveRecord(buildRecord(loginUser, appId, message, request)
-                    .detectionType("static")
-                    .triggerRule(StrUtil.maxLength(hit.rule(), 500))
-                    .riskLevel(hit.riskLevel())
-                    .handleResult("blocked")
-                    .build());
+        // 空消息直接放行（非空/长度校验由业务入口负责，此处不重复拦截）
+        if (StrUtil.isBlank(message)) {
+            return;
+        }
+        // 提取审计所需的公共上下文
+        Long userId = loginUser == null ? null : loginUser.getId();
+        String clientIp = resolveClientIp(request);
+
+        // ==================== 第一层：静态关键词 / 正则快速预筛 ====================
+        // 命中成本极低，优先拦截最典型的注入攻击，命中即无需再调用大模型（省时省钱）
+        String staticHitRule = matchStaticRule(message);
+        if (staticHitRule != null) {
+            // 写审查记录（static + blocked），失败不影响拦截主流程
+            saveRecord(userId, appId, message, DETECTION_TYPE_STATIC, staticHitRule,
+                    null, RISK_LEVEL_HIGH, null, HANDLE_RESULT_BLOCKED, clientIp);
+            log.warn("静态敏感词拦截：userId={}, appId={}, 命中规则={}", userId, appId, staticHitRule);
             throw new BusinessException(ErrorCode.SENSITIVE_CONTENT);
         }
 
-        // 第二层：AI 大模型语义检测（可开关）
-        if (!aiCheckEnabled) {
-            return;
-        }
+        // ==================== 第二层：AI 大模型语义检测（同步调用）====================
+        // 识别静态匹配无法覆盖的隐晦表达、语义级攻击
         SensitiveCheckResult result;
         try {
-            result = CompletableFuture
-                    .supplyAsync(() -> sensitiveContentCheckService.checkContent(message))
-                    .get(AI_CHECK_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            // 同步调用大模型，直接阻塞等待检测结果
+            result = sensitiveContentCheckService.checkContent(message);
         } catch (Exception e) {
-            // 检测服务异常不能阻塞主业务：降级放行并记录，便于观察检测服务健康度
-            log.warn("AI 敏感内容检测异常，降级放行。appId={}, userId={}", appId,
-                    loginUser != null ? loginUser.getId() : null, e);
-            saveRecord(buildRecord(loginUser, appId, message, request)
-                    .detectionType("ai")
-                    .riskLevel("low")
-                    .handleResult("failed_open")
-                    .aiReason("检测服务异常：" + StrUtil.maxLength(e.getMessage(), 500))
-                    .build());
+            // 异常：降级放行（fail-open），记录审计，避免大模型抖动阻断正常业务
+            saveRecord(userId, appId, message, DETECTION_TYPE_AI, null,
+                    null, null, "AI 检测异常，降级放行：" + e.getMessage(),
+                    HANDLE_RESULT_FAILED_OPEN, clientIp);
+            log.error("AI 敏感内容检测异常，降级放行：userId={}, appId={}", userId, appId, e);
             return;
         }
+
+        // AI 判定为敏感 → 写审查记录（ai + blocked）并拦截
         if (result != null && result.isSensitive()) {
-            log.warn("AI 检测到敏感内容，已拦截。appId={}, userId={}, category={}, reason={}",
-                    appId, loginUser != null ? loginUser.getId() : null, result.getCategory(), result.getReason());
-            saveRecord(buildRecord(loginUser, appId, message, request)
-                    .detectionType("ai")
-                    .triggerRule(StrUtil.maxLength(result.getCategory(), 500))
-                    .riskCategory(result.getCategory())
-                    .riskLevel(StrUtil.blankToDefault(result.getRiskLevel(), "medium"))
-                    .aiReason(result.getReason())
-                    .handleResult("blocked")
-                    .build());
+            saveRecord(userId, appId, message, DETECTION_TYPE_AI, null,
+                    result.getCategory(), result.getRiskLevel(), result.getReason(),
+                    HANDLE_RESULT_BLOCKED, clientIp);
+            log.warn("AI 敏感内容拦截：userId={}, appId={}, 类别={}, 等级={}, 理由={}",
+                    userId, appId, result.getCategory(), result.getRiskLevel(), result.getReason());
             throw new BusinessException(ErrorCode.SENSITIVE_CONTENT);
         }
+        // AI 判定安全 → 放行，正常请求不落库，避免刷爆审查表
     }
 
     /**
-     * 静态检测：关键词 + 注入模式
-     * 关键词命中记 medium，注入模式命中记 high
+     * 静态规则匹配：命中返回命中的关键词或正则，未命中返回 null
      */
-    private Optional<StaticHit> staticCheck(String message) {
-        if (StrUtil.isBlank(message)) {
-            return Optional.empty();
-        }
-        String lowerInput = message.toLowerCase();
+    private String matchStaticRule(String message) {
+        String lowerMessage = message.toLowerCase();
+        // 关键词包含匹配
         for (String word : SENSITIVE_WORDS) {
-            if (lowerInput.contains(word.toLowerCase())) {
-                return Optional.of(new StaticHit("关键词: " + word, "medium"));
+            if (lowerMessage.contains(word.toLowerCase())) {
+                return word;
             }
         }
+        // 注入攻击正则匹配
         for (Pattern pattern : INJECTION_PATTERNS) {
-            if (pattern.matcher(message).find()) {
-                return Optional.of(new StaticHit("注入模式: " + pattern.pattern(), "high"));
+            Matcher matcher = pattern.matcher(message);
+            if (matcher.find()) {
+                return pattern.pattern();
             }
         }
-        return Optional.empty();
-    }
-
-    private SafetyReviewRecord.SafetyReviewRecordBuilder buildRecord(User loginUser, Long appId,
-                                                                     String message, HttpServletRequest request) {
-        return SafetyReviewRecord.builder()
-                .userId(loginUser != null ? loginUser.getId() : null)
-                .appId(appId)
-                .userMessage(StrUtil.maxLength(message, MAX_RECORD_MESSAGE_LENGTH))
-                .clientIp(getClientIp(request));
+        return null;
     }
 
     /**
-     * 获取客户端 IP（优先取代理头）
+     * 构建并保存审查记录（保存失败只记日志，不影响拦截/放行主流程）
      */
-    private String getClientIp(HttpServletRequest request) {
-        if (request == null) {
+    private void saveRecord(Long userId, Long appId, String message, String detectionType,
+                            String triggerRule, String riskCategory, String riskLevel,
+                            String aiReason, String handleResult, String clientIp) {
+        SafetyReviewRecord record = SafetyReviewRecord.builder()
+                .userId(userId)
+                .appId(appId)
+                .userMessage(truncateMessage(message))
+                .detectionType(detectionType)
+                .triggerRule(StrUtil.maxLength(triggerRule, 500))
+                .riskCategory(riskCategory)
+                .riskLevel(riskLevel)
+                .aiReason(aiReason)
+                .handleResult(handleResult)
+                .clientIp(clientIp)
+                .build();
+        safetyReviewRecordService.saveRecord(record);
+    }
+
+    /**
+     * 消息入库截断，避免超长内容撑爆字段
+     */
+    private String truncateMessage(String message) {
+        if (message == null) {
             return null;
         }
-        String xff = request.getHeader("X-Forwarded-For");
-        if (StrUtil.isNotBlank(xff)) {
-            // 多级代理时第一个 IP 为客户端真实 IP
-            return StrUtil.subBefore(xff, ",", false).trim();
-        }
-        String realIp = request.getHeader("X-Real-IP");
-        if (StrUtil.isNotBlank(realIp)) {
-            return realIp;
-        }
-        return request.getRemoteAddr();
+        return message.length() > MAX_RECORD_MESSAGE_LENGTH
+                ? message.substring(0, MAX_RECORD_MESSAGE_LENGTH) : message;
     }
 
     /**
-     * 静态命中结果
+     * 解析客户端 IP：优先用传入的 request，为空时回退到 RequestContextHolder
+     * （与 RateLimitAspect.getClientIP 保持一致的取值优先级）
      */
-    private record StaticHit(String rule, String riskLevel) {
+    private String resolveClientIp(HttpServletRequest request) {
+        HttpServletRequest req = request;
+        if (req == null) {
+            ServletRequestAttributes attributes =
+                    (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return "unknown";
+            }
+            req = attributes.getRequest();
+        }
+        String ip = req.getHeader("X-Forwarded-For");
+        if (StrUtil.isBlank(ip) || "unknown".equalsIgnoreCase(ip)) {
+            ip = req.getHeader("X-Real-IP");
+        }
+        if (StrUtil.isBlank(ip) || "unknown".equalsIgnoreCase(ip)) {
+            ip = req.getRemoteAddr();
+        }
+        // 多级代理时取第一个非 unknown 的 IP
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip != null ? ip : "unknown";
     }
 }
