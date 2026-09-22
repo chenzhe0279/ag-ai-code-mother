@@ -24,6 +24,8 @@ import com.ag.agaicodemother.model.enums.CodeGenTypeEnum;
 import com.ag.agaicodemother.model.vo.AppVO;
 import com.ag.agaicodemother.model.vo.AppVersionVO;
 import com.ag.agaicodemother.model.vo.UserVO;
+import com.ag.agaicodemother.monitor.MonitorContext;
+import com.ag.agaicodemother.monitor.MonitorContextHolder;
 import com.ag.agaicodemother.service.ChatHistoryService;
 import com.ag.agaicodemother.service.ScreenshotService;
 import com.ag.agaicodemother.service.UserService;
@@ -135,11 +137,22 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
         ThrowUtils.throwIf(!update, ErrorCode.OPERATION_ERROR, "更新应用生成状态失败");
         //在调用AI前，先保存用户消息到数据库表中
         chatHistoryService.addChatMessage(appId, message, ChatHistoryMessageTypeEnum.USER.getValue(), loginUser.getId());
+        //在调用AI前，设置上下文信息
+        MonitorContextHolder.setContext(
+                MonitorContext.builder()
+                        .userId(loginUser.getId().toString())
+                        .appId(appId.toString())
+                        .build()
+        );
         //6调用AI大模型生成代码
         //return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId ,nextVersion);
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId, nextVersion);
         //调用代码解析执行器
-        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum, nextVersion);
+        return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum, nextVersion)
+                .doFinally(signalType ->
+                        //流式结束时清理上下文信息（无论成功/失败/取消）
+                        MonitorContextHolder.clearContext()
+                );
     }
 
     /**
