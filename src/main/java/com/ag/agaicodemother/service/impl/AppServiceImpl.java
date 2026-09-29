@@ -144,8 +144,7 @@ public class AppServiceImpl extends ServiceImpl<AppMapper, App>  implements AppS
                         .appId(appId.toString())
                         .build()
         );
-        //6调用AI大模型生成代码
-        //return aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId ,nextVersion);
+        //6.调用AI大模型生成代码并保存到本地目录返回代码流
         Flux<String> codeStream = aiCodeGeneratorFacade.generateAndSaveCodeStream(message, codeGenTypeEnum, appId, nextVersion);
         //调用代码解析执行器
         return streamHandlerExecutor.doExecute(codeStream, chatHistoryService, appId, loginUser, codeGenTypeEnum, nextVersion)
