@@ -1,456 +1,324 @@
-<template>
-  <div
-    class="app-card reveal"
-    :class="[colorClass, { 'app-card--featured': featured }]"
-    role="button"
-    tabindex="0"
-    :title="app.appName"
-    @click="handleViewChat"
-    @keydown.enter="handleViewChat"
-  >
-    <!-- 封面：部署成功后后端异步截图上传 OSS，URL 存于 app.cover -->
-    <img
-      v-if="app.cover && !coverFailed"
-      class="card-cover"
-      :src="app.cover"
-      :alt="app.appName"
-      loading="lazy"
-      @error="coverFailed = true"
-    />
-    <span v-if="app.cover && !coverFailed" class="card-shade" aria-hidden="true"></span>
-    <span class="card-slice" aria-hidden="true"></span>
-    <span class="card-orbit" aria-hidden="true"></span>
-    <span v-if="!app.cover || coverFailed" class="card-icon">{{ cardIcon }}</span>
-    <span class="card-content">
-      <strong>
-        {{ app.appName || '未命名应用' }}
-        <i v-if="app.visibility === 'private'" class="card-flag private">私有</i>
-        <i v-if="isPinned" class="card-flag pinned">置顶</i>
-      </strong>
-      <small class="card-desc">{{ cardDesc }}</small>
-      <small v-if="hasStatusTags" class="card-meta">
-        <i v-if="app.genStatus === 'generating'" class="flag generating">生成中</i>
-        <i v-if="app.genStatus === 'failed'" class="flag failed">生成失败</i>
-        <i v-if="app.deployKey && app.deployStatus === 'online'" class="flag online">已上线</i>
-        <i v-if="app.deployKey && app.deployStatus === 'offline'" class="flag offline">已下线</i>
-        <i v-for="tag in tagList" :key="tag" class="flag tag">{{ tag }}</i>
-      </small>
-    </span>
-    <!-- 操作区统一拦截点击冒泡：按钮都放在这里面，
-         即使某个子按钮的事件被组件接管，也不会冒泡到卡片触发"查看对话" -->
-    <span class="card-actions" @click.stop="stopCardClick" @keydown.stop="stopCardClick">
-      <span
-        v-if="canManage"
-        class="card-action-btn delete"
-        role="button"
-        title="删除作品"
-        @click.stop="handleDeleteClick"
-      >
-        ✕
-      </span>
-      <span
-        v-if="canManage"
-        class="card-action-btn pin"
-        role="button"
-        :title="isPinned ? '取消置顶' : '置顶'"
-        @click="handlePinToggle"
-      >✦</span>
-      <span
-        v-if="canOpenWork"
-        class="card-arrow"
-        role="button"
-        title="查看作品"
-        @click="handleViewWork"
-      >↗</span>
-    </span>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { App } from 'ant-design-vue'
+import {
+  AppstoreOutlined,
+  ArrowRightOutlined,
+  CodeOutlined,
+  DeleteOutlined,
+  ExportOutlined,
+  LayoutOutlined,
+  PushpinFilled,
+  PushpinOutlined,
+} from '@ant-design/icons-vue'
 import { useLoginUserStore } from '@/stores/loginUser'
+import { formatCodeGenType } from '@/utils/codeGenTypes'
 
-interface Props {
-  app: API.AppVO
-  featured?: boolean
-}
+const props = defineProps<{ app: API.AppVO }>()
+const emit = defineEmits<{
+  'view-chat': [appId: API.AppVO['id']]
+  'view-work': [app: API.AppVO]
+  'pin-toggle': [app: API.AppVO]
+  'delete-app': [app: API.AppVO]
+}>()
 
-interface Emits {
-  (e: 'view-chat', appId: string | number | undefined): void
-  (e: 'view-work', app: API.AppVO): void
-  (e: 'pin-toggle', app: API.AppVO): void
-  (e: 'delete-app', app: API.AppVO): void
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  featured: false,
-})
-
-const emit = defineEmits<Emits>()
-
-const loginUserStore = useLoginUserStore()
-
-// 封面加载失败时回退到 icon 形态
-const coverFailed = ref(false)
-
-const isPinned = computed(() => props.app.priority === 999)
-
-const canManage = computed(() => {
-  if (!loginUserStore.loginUser.id) return false
-  return (
-    props.app.userId === loginUserStore.loginUser.id ||
-    loginUserStore.loginUser.userRole === 'admin'
-  )
-})
-
-const canOpenWork = computed(() => {
-  return Boolean(props.app.deployKey && props.app.deployStatus !== 'offline')
-})
-
-const cardIcon = computed(() => {
-  const type = props.app.codeGenType
-  if (type === 'html') return '◐'
-  if (type === 'multi_file') return '◈'
-  if (type === 'vue_project') return '✦'
-  return (props.app.appName || 'A').charAt(0)
-})
-
-const cardDesc = computed(() => {
-  const prompt = props.app.initPrompt || props.app.appName || '一句话生成的应用'
-  return prompt.length > 46 ? `${prompt.slice(0, 46)}…` : prompt
-})
-
-const tagList = computed(() => {
-  if (!props.app.tags) return []
-  return props.app.tags.split(',').filter(Boolean).slice(0, 3)
-})
-
-const hasStatusTags = computed(() => {
-  const app = props.app
-  const hasFlag =
-    app.genStatus === 'generating' ||
-    app.genStatus === 'failed' ||
-    Boolean(app.deployKey && (app.deployStatus === 'online' || app.deployStatus === 'offline'))
-  return hasFlag || tagList.value.length > 0
-})
-
-// 三色系按应用 id 稳定分配，保证同色系分布
-const colorClass = computed(() => {
-  const id = Number(props.app.id ?? 0)
-  return ['rose', 'violet', 'sky'][Math.abs(id) % 3]
-})
-
-const handleViewChat = (e?: Event) => {
-  // 兜底拦截：操作区（✦ 置顶 / ✕ 删除 / ↗ 查看作品）里的点击一律不触发卡片跳转。
-  // a-popconfirm 会接管它子元素的点击事件，靠 @click.stop 未必拦得住，
-  // 所以这里直接判断事件来源是否落在操作区内。
-  const target = e?.target as HTMLElement | null
-  if (target && target.closest('.card-actions')) {
-    return
-  }
-  emit('view-chat', props.app.id)
-}
-
-const handleViewWork = () => {
-  emit('view-work', props.app)
-}
-
-const handlePinToggle = () => {
-  emit('pin-toggle', props.app)
-}
-
-// 用程序化确认框而不是 a-popconfirm：
-// popconfirm 会接管子元素的点击事件，实测点击后既不弹窗也不阻止冒泡，
-// 事件直接冒到卡片上跳进了应用。改成自己处理点击，行为完全可控。
 const { modal } = App.useApp()
+const loginUserStore = useLoginUserStore()
+const coverFailed = ref(false)
+watch(
+  () => props.app.cover,
+  () => {
+    coverFailed.value = false
+  },
+)
 
-const handleDeleteClick = (e: Event) => {
-  e.stopPropagation()
+const title = computed(() => props.app.appName || '未命名应用')
+const isPinned = computed(() => props.app.priority === 999)
+const canManage = computed(() => {
+  const user = loginUserStore.loginUser
+  return !!user.id && (String(props.app.userId) === String(user.id) || user.userRole === 'admin')
+})
+const canOpenWork = computed(() => !!props.app.deployKey && props.app.deployStatus !== 'offline')
+const tags = computed(
+  () =>
+    props.app.tags
+      ?.split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean)
+      .slice(0, 3) ?? [],
+)
+
+const coverIcons = { html: LayoutOutlined, multi_file: AppstoreOutlined, vue_project: CodeOutlined }
+const coverIcon = computed(
+  () => coverIcons[props.app.codeGenType as keyof typeof coverIcons] ?? CodeOutlined,
+)
+
+function confirmDelete() {
   modal.confirm({
     title: '删除作品',
-    content: `确定要删除「${props.app.appName || '未命名应用'}」吗？删除后不可恢复。`,
+    content: '确定删除「' + title.value + '」吗？删除后无法恢复。',
     okText: '删除',
     okType: 'danger',
     cancelText: '取消',
-    onOk: () => {
-      emit('delete-app', props.app)
-    },
+    onOk: () => emit('delete-app', props.app),
   })
-}
-
-// 操作区所有点击都在容器层拦截冒泡：
-// a-popconfirm 会克隆子元素并接管它的点击事件，子元素上的 @click.stop 会失效，
-// 导致点删除时冒泡到卡片、直接跳进应用。放在容器上就不受子组件实现影响。
-const stopCardClick = (e: Event) => {
-  e.stopPropagation()
 }
 </script>
 
+<template>
+  <article class="app-card">
+    <button
+      class="app-card-main"
+      type="button"
+      :aria-label="'查看对话：' + title"
+      @click="emit('view-chat', app.id)"
+    >
+      <span class="card-media">
+        <img
+          v-if="app.cover && !coverFailed"
+          :src="app.cover"
+          alt=""
+          loading="lazy"
+          @error="coverFailed = true"
+        />
+        <span v-else class="card-fallback" aria-hidden="true">
+          <span><component :is="coverIcon" /></span>
+        </span>
+      </span>
+      <span class="card-copy">
+        <span class="card-title">{{ title }}</span>
+        <span v-if="app.initPrompt" class="card-description">{{ app.initPrompt }}</span>
+      </span>
+    </button>
+
+    <div class="card-footer">
+      <div class="card-tags">
+        <span v-if="app.codeGenType" class="card-tag">{{
+          formatCodeGenType(app.codeGenType)
+        }}</span>
+        <span v-if="app.visibility === 'private'" class="card-tag">私有</span>
+        <span v-if="isPinned" class="card-tag">已置顶</span>
+        <span v-if="app.genStatus === 'generating'" class="card-tag card-tag--pending">生成中</span>
+        <span v-if="app.genStatus === 'failed'" class="card-tag card-tag--failed">生成失败</span>
+        <span
+          v-if="app.deployKey && app.deployStatus === 'online'"
+          class="card-tag card-tag--online"
+          >已上线</span
+        >
+        <span v-if="app.deployKey && app.deployStatus === 'offline'" class="card-tag">已下线</span>
+        <span v-for="(tag, index) in tags" :key="index" class="card-tag">{{ tag }}</span>
+      </div>
+      <div class="card-actions">
+        <button
+          v-if="canManage"
+          type="button"
+          :aria-label="isPinned ? '取消置顶' : '置顶'"
+          :title="isPinned ? '取消置顶' : '置顶'"
+          @click="emit('pin-toggle', app)"
+        >
+          <PushpinFilled v-if="isPinned" /><PushpinOutlined v-else />
+        </button>
+        <button
+          v-if="canManage"
+          class="delete-action"
+          type="button"
+          aria-label="删除作品"
+          title="删除作品"
+          @click="confirmDelete"
+        >
+          <DeleteOutlined />
+        </button>
+        <button
+          v-if="canOpenWork"
+          type="button"
+          aria-label="查看上线作品"
+          title="查看上线作品"
+          @click="emit('view-work', app)"
+        >
+          <ExportOutlined />
+        </button>
+        <button
+          type="button"
+          aria-label="查看对话"
+          title="查看对话"
+          @click="emit('view-chat', app.id)"
+        >
+          <ArrowRightOutlined />
+        </button>
+      </div>
+    </div>
+  </article>
+</template>
+
 <style scoped>
 .app-card {
-  position: relative;
-  isolation: isolate;
-  min-height: 186px;
-  overflow: hidden;
   display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 26px;
-  color: #f5f7ff;
-  text-align: left;
-  border: 1px solid rgba(168, 186, 235, 0.1);
-  border-radius: 22px;
-  background: linear-gradient(125deg, rgba(27, 40, 86, 0.16), rgba(16, 25, 54, 0.24));
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.04), 0 22px 55px rgba(2, 5, 17, 0.1);
-  backdrop-filter: blur(10px);
-  transition: 0.3s ease;
+  min-width: 0;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
+  background: linear-gradient(145deg, #fff, #f4f7fa);
+  box-shadow: 0 12px 24px -22px #536783b0;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.app-card:hover {
+  border-color: #c8d4e5;
+  box-shadow: 0 13px 26px -19px #465f838c;
+}
+
+.app-card-main {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 15px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
   cursor: pointer;
 }
-.app-card::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  border-radius: inherit;
-  padding: 1px;
-  background: linear-gradient(135deg, rgba(178, 190, 255, 0.5), transparent 34%, transparent 66%, rgba(126, 230, 207, 0.34));
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0.35;
-  pointer-events: none;
-  transition: opacity 0.3s;
+
+.card-media {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  aspect-ratio: 2.12;
+  border-radius: 14px;
+  background: #e4eaf3;
 }
-.app-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  background: linear-gradient(120deg, transparent 25%, rgba(255, 255, 255, 0.09) 47%, transparent 70%);
-  transform: translateX(-115%);
-  pointer-events: none;
-  transition: 0.6s;
-}
-.app-card:hover {
-  transform: translateY(-8px);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.12), 0 28px 70px rgba(2, 5, 17, 0.35);
-}
-.card-cover {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
+
+.card-media img {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.9;
-  transition: transform 0.5s ease, opacity 0.3s ease;
+  object-position: top;
 }
-.app-card:hover .card-cover {
-  transform: scale(1.06);
-  opacity: 1;
-}
-.card-shade {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: none;
-  background: linear-gradient(
-    100deg,
-    rgba(10, 16, 36, 0.86) 0%,
-    rgba(10, 16, 36, 0.62) 46%,
-    rgba(10, 16, 36, 0.16) 100%
-  );
-}
-.card-slice,
-.card-orbit {
-  z-index: 2;
-}
-.card-icon,
-.card-content,
-.card-actions {
-  position: relative;
-  z-index: 3;
-}
-.app-card:hover::before {
-  opacity: 1;
-}
-.app-card:hover::after {
-  transform: translateX(115%);
-}
-.card-slice {
-  position: absolute;
-  right: -70px;
-  top: -70px;
-  width: 180px;
-  height: 180px;
-  border: 1px solid rgba(178, 190, 255, 0.1);
-  transform: rotate(24deg);
-  pointer-events: none;
-}
-.card-slice::after {
-  content: '';
-  position: absolute;
-  inset: 18px;
-  border: 1px solid rgba(126, 230, 207, 0.09);
-}
-.card-orbit {
-  position: absolute;
-  width: 150px;
-  height: 150px;
-  border: 1px solid rgba(174, 191, 255, 0.24);
-  border-radius: 50%;
-  right: -44px;
-  top: -64px;
-  animation: orbit-spin 26s linear infinite;
-}
-@keyframes orbit-spin {
-  to { transform: rotate(360deg); }
-}
-.card-icon {
-  flex: 0 0 54px;
+.card-fallback {
   display: grid;
+  width: 100%;
+  height: 100%;
   place-items: center;
-  width: 54px;
-  height: 54px;
-  border: 1px solid rgba(218, 229, 255, 0.3);
-  border-radius: 17px;
-  background: rgba(203, 216, 255, 0.05);
-  color: #dfe7ff;
-  font: 26px 'Playfair Display', serif;
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.14), 0 0 26px rgba(126, 156, 255, 0.16);
-  backdrop-filter: blur(6px);
+  background:
+    radial-gradient(ellipse at 26% 14%, #fff, transparent 65%),
+    linear-gradient(145deg, #eaf0f6, #cdd8e6);
 }
-.rose .card-icon {
-  color: #ffc4df;
-  background: rgba(245, 167, 211, 0.06);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 0 26px rgba(245, 167, 211, 0.1);
-}
-.violet .card-icon {
-  color: #ced0ff;
-  background: rgba(159, 145, 255, 0.06);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 0 26px rgba(159, 145, 255, 0.12);
-}
-.sky .card-icon {
-  color: #bde6ff;
-  background: rgba(125, 203, 255, 0.06);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 0 26px rgba(125, 203, 255, 0.14);
-}
-.card-content {
+.card-fallback > span {
   display: grid;
-  gap: 7px;
-  min-width: 0;
+  width: 49px;
+  height: 49px;
+  place-items: center;
+  border: 1px solid #fff;
+  border-radius: 15px;
+  background: #ffffff9c;
+  color: #4e6079;
+  font-size: 22px;
+  box-shadow: 0 12px 20px -14px #49607e90;
 }
-.card-content strong {
-  font-size: 18px;
+
+.card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding-inline: 9px;
+}
+.card-title {
+  color: var(--text);
+  font-weight: 700;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.card-description {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.card-footer {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 9px 4px;
+}
+
+.card-tags,
+.card-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.card-flag,
-.card-meta .flag {
-  font: 9px 'DM Mono', monospace;
-  font-style: normal;
-  letter-spacing: 0.08em;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(168, 186, 235, 0.24);
-  color: #aebde9;
-}
-.card-flag.private {
-  color: #ffd9a8;
-  border-color: rgba(244, 208, 63, 0.4);
-}
-.card-flag.pinned {
-  color: #d8ccff;
-  border-color: rgba(176, 110, 224, 0.5);
-}
-.card-meta .flag.generating {
-  color: #8fd8ff;
-  border-color: rgba(125, 203, 255, 0.45);
-}
-.card-meta .flag.failed {
-  color: #ff9aa8;
-  border-color: rgba(246, 127, 138, 0.45);
-}
-.card-meta .flag.online {
-  color: #8ff0be;
-  border-color: rgba(51, 217, 178, 0.45);
-}
-.card-meta {
-  display: flex;
   flex-wrap: wrap;
   gap: 5px;
 }
-.card-desc {
-  max-width: 260px;
-  color: #aeb7d3;
-  line-height: 1.65;
-  font-size: 13px;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
 .card-actions {
-  z-index: 6;
-  margin-left: auto;
-  align-self: flex-start;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  align-self: flex-end;
 }
-.card-action-btn.pin {
-  width: 28px;
-  height: 28px;
+.card-tags {
+  min-width: 0;
+}
+.card-tag {
+  max-width: 100%;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #edf0f5;
+  color: var(--text-dim);
+  font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.card-tag--online {
+  background: #e5f3ec;
+  color: var(--success);
+}
+.card-tag--failed {
+  background: #fcebee;
+  color: var(--danger);
+}
+.card-tag--pending {
+  background: #f9f0db;
+  color: var(--warning);
+}
+
+.card-actions button {
   display: grid;
+  width: 33px;
+  height: 33px;
   place-items: center;
-  border: 1px solid rgba(168, 186, 235, 0.24);
-  border-radius: 9px;
-  background: rgba(11, 18, 38, 0.4);
-  color: #8c9abc;
-  font-size: 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-dim);
   cursor: pointer;
-  opacity: 0.78;
-  transition: 0.2s;
+  transition:
+    background 180ms ease,
+    color 180ms ease;
 }
-.card-action-btn.delete {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(168, 186, 235, 0.24);
-  border-radius: 9px;
-  background: rgba(11, 18, 38, 0.4);
-  color: #8c9abc;
-  font-size: 12px;
-  cursor: pointer;
-  opacity: 0.78;
-  transition: 0.2s;
+.card-actions button:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
-.app-card:hover .card-action-btn.pin,
-.card-action-btn.pin:focus-visible,
-.app-card:hover .card-action-btn.delete,
-.card-action-btn.delete:focus-visible {
-  opacity: 1;
+.card-actions .delete-action:hover {
+  color: var(--danger);
+  background: #fcebee;
 }
-.card-action-btn.pin:hover {
-  background: rgba(135, 150, 246, 0.16);
-  color: #fff;
-}
-.card-action-btn.delete:hover {
-  background: rgba(246, 127, 138, 0.18);
-  border-color: rgba(246, 127, 138, 0.5);
-  color: #ffb0bc;
-}
-.card-arrow {
-  color: #cbd7ff;
-  font-size: 24px;
-  cursor: pointer;
-  transition: transform 0.3s ease;
-}
-.app-card:hover .card-arrow {
-  transform: translate(3px, -3px);
+
+@media (pointer: coarse) {
+  .card-actions button {
+    width: 42px;
+    height: 42px;
+  }
 }
 </style>

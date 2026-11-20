@@ -1,6 +1,7 @@
 <template>
-  <div class="profile-page">
-    <div class="profile-card reveal">
+  <div class="profile-page workspace-page">
+    <header class="page-heading"><h1>个人主页</h1></header>
+    <div class="profile-card glass-panel">
       <div class="profile-head">
         <div class="avatar-upload-wrap">
           <a-upload
@@ -197,105 +198,75 @@ onMounted(() => {
 
 <style scoped>
 .profile-page {
-  width: min(100%, 1120px);
-  min-height: calc(100vh - 64px);
-  margin: 0 auto;
-  padding: 29px 24px 24px;
-  display: flex;
-  flex-direction: column;
+  width: min(620px, var(--workspace-width));
+  padding-block: clamp(30px, 5vw, 66px) 15px;
 }
 
 .profile-card {
-  width: min(100%, 560px);
-  margin: auto;
-  padding: 36px 34px 30px;
-  border: 1px solid rgba(164, 184, 232, 0.22);
-  border-radius: 22px;
-  background: rgba(22, 31, 60, 0.42);
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, 0.05),
-    0 24px 70px rgba(2, 5, 17, 0.35);
-  backdrop-filter: blur(12px);
+  padding: clamp(18px, 3vw, 32px);
 }
-
 .profile-head {
   display: flex;
   align-items: center;
   gap: 18px;
-  margin-bottom: 26px;
+  margin-bottom: 24px;
+}
+.profile-meta {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.profile-meta h2 {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 21px;
+  font-weight: 700;
+}
+.profile-account,
+.avatar-tip {
+  color: var(--text-faint);
+  font-size: 12px;
 }
 
 .avatar-upload-wrap {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+  flex: none;
+  display: grid;
+  justify-items: center;
   gap: 7px;
 }
-
 .avatar-upload-wrap :deep(.ant-upload) {
   display: block;
   cursor: pointer;
 }
-
 .avatar-uploader {
   position: relative;
+  overflow: hidden;
   width: 72px;
   height: 72px;
-  overflow: hidden;
   border-radius: 50%;
 }
-
 .avatar-uploader :deep(.ant-avatar) {
   display: block;
-  border: 1px solid rgba(202, 216, 255, 0.28);
-  box-shadow: 0 10px 28px rgba(3, 8, 25, 0.28);
+  background: #e4eaf3;
+  color: var(--text-dim);
 }
-
 .avatar-overlay {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  border-radius: inherit;
-  background: rgba(7, 13, 31, 0.64);
-  color: #f5f7ff;
+  background: #242b38ba;
+  color: #fff;
   font-size: 20px;
   opacity: 0;
-  transition: opacity 0.2s ease;
   pointer-events: none;
+  transition: opacity 180ms ease;
 }
-
 .avatar-uploader:hover .avatar-overlay,
+.avatar-upload-wrap:focus-within .avatar-overlay,
 .avatar-uploader.is-uploading .avatar-overlay {
   opacity: 1;
 }
-
 .avatar-uploader.is-uploading {
   cursor: wait;
-}
-
-.avatar-tip {
-  color: #8c9abc;
-  font-size: 11px;
-  white-space: nowrap;
-}
-
-.profile-meta h2 {
-  margin: 0 0 6px;
-  font:
-    600 22px/1.3 'Playfair Display',
-    'Noto Sans SC',
-    serif;
-  color: #f2f5ff;
-}
-
-.profile-account {
-  margin: 0 0 8px;
-  color: #8c9abc;
-  font:
-    11px 'DM Mono',
-    monospace;
-  letter-spacing: 0.06em;
 }
 </style>

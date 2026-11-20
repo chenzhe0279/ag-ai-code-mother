@@ -135,13 +135,13 @@ const handleDelete = () => {
 
 .info-label {
   width: 90px;
-  color: #666;
+  color: var(--text-dim);
   font-size: 14px;
   flex-shrink: 0;
 }
 
 .app-actions {
   padding-top: 16px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--line);
 }
 </style>

@@ -1,68 +1,71 @@
 <template>
-  <div id="chatManagePage">
-    <!-- 搜索表单 -->
-    <a-form layout="inline" :model="searchParams" @finish="doSearch">
-      <a-form-item label="消息内容">
-        <a-input v-model:value="searchParams.message" placeholder="输入消息内容" />
-      </a-form-item>
-      <a-form-item label="消息类型">
-        <a-select
-          v-model:value="searchParams.messageType"
-          placeholder="选择消息类型"
-          style="width: 120px"
-        >
-          <a-select-option value="">全部</a-select-option>
-          <a-select-option value="user">用户消息</a-select-option>
-          <a-select-option value="assistant">AI消息</a-select-option>
-        </a-select>
-      </a-form-item>
-      <a-form-item label="应用ID">
-        <a-input v-model:value="searchParams.appId" placeholder="输入应用ID" />
-      </a-form-item>
-      <a-form-item label="用户ID">
-        <a-input v-model:value="searchParams.userId" placeholder="输入用户ID" />
-      </a-form-item>
-      <a-form-item>
-        <a-button type="primary" html-type="submit">搜索</a-button>
-      </a-form-item>
-    </a-form>
-    <a-divider />
+  <div id="chatManagePage" class="admin-page workspace-page">
+    <header class="page-heading"><h1>对话管理</h1></header>
+    <div class="admin-panel glass-panel">
+      <!-- 搜索表单 -->
+      <a-form layout="inline" :model="searchParams" @finish="doSearch">
+        <a-form-item label="消息内容">
+          <a-input v-model:value="searchParams.message" placeholder="输入消息内容" />
+        </a-form-item>
+        <a-form-item label="消息类型">
+          <a-select
+            v-model:value="searchParams.messageType"
+            placeholder="选择消息类型"
+            style="width: 120px"
+          >
+            <a-select-option value="">全部</a-select-option>
+            <a-select-option value="user">用户消息</a-select-option>
+            <a-select-option value="assistant">AI消息</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="应用ID">
+          <a-input v-model:value="searchParams.appId" placeholder="输入应用ID" />
+        </a-form-item>
+        <a-form-item label="用户ID">
+          <a-input v-model:value="searchParams.userId" placeholder="输入用户ID" />
+        </a-form-item>
+        <a-form-item>
+          <a-button type="primary" html-type="submit">搜索</a-button>
+        </a-form-item>
+      </a-form>
+      <a-divider />
 
-    <!-- 表格 -->
-    <a-table
-      :columns="columns"
-      :data-source="data"
-      :pagination="pagination"
-      @change="doTableChange"
-      :scroll="{ x: 1400 }"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'message'">
-          <a-tooltip :title="record.message">
-            <div class="message-text">{{ record.message }}</div>
-          </a-tooltip>
-        </template>
-        <template v-else-if="column.dataIndex === 'messageType'">
-          <a-tag :color="record.messageType === 'user' ? 'blue' : 'green'">
-            {{ record.messageType === 'user' ? '用户消息' : 'AI消息' }}
-          </a-tag>
-        </template>
-        <template v-else-if="column.dataIndex === 'createTime'">
-          {{ formatTime(record.createTime) }}
-        </template>
-        <template v-else-if="column.key === 'action'">
-          <a-space>
-            <a-button type="primary" size="small" @click="viewAppChat(record.appId)">
-              查看对话
-            </a-button>
-            <!-- 后端尚未提供删除单条对话消息的接口，先禁用避免给出"已删除"的假反馈 -->
-            <a-tooltip title="后端暂未提供删除对话消息的接口，待补充后开放">
-              <a-button danger size="small" disabled>删除</a-button>
+      <!-- 表格 -->
+      <a-table
+        :columns="columns"
+        :data-source="data"
+        :pagination="pagination"
+        @change="doTableChange"
+        :scroll="{ x: 1400 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'message'">
+            <a-tooltip :title="record.message">
+              <div class="message-text">{{ record.message }}</div>
             </a-tooltip>
-          </a-space>
+          </template>
+          <template v-else-if="column.dataIndex === 'messageType'">
+            <a-tag :color="record.messageType === 'user' ? 'blue' : 'green'">
+              {{ record.messageType === 'user' ? '用户消息' : 'AI消息' }}
+            </a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'createTime'">
+            {{ formatTime(record.createTime) }}
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <a-space>
+              <a-button type="primary" size="small" @click="viewAppChat(record.appId)">
+                查看对话
+              </a-button>
+              <!-- 后端尚未提供删除单条对话消息的接口，先禁用避免给出"已删除"的假反馈 -->
+              <a-tooltip title="后端暂未提供删除对话消息的接口，待补充后开放">
+                <a-button danger size="small" disabled>删除</a-button>
+              </a-tooltip>
+            </a-space>
+          </template>
         </template>
-      </template>
-    </a-table>
+      </a-table>
+    </div>
   </div>
 </template>
 
@@ -183,22 +186,12 @@ const viewAppChat = (appId: number | undefined) => {
 </script>
 
 <style scoped>
-#chatManagePage {
-  padding: 24px;
-  margin-top: 16px;
-  border: 1px solid var(--line-soft);
-  border-radius: 16px;
-  background: rgba(13, 20, 42, 0.55);
-  backdrop-filter: blur(12px);
-}
-
 .message-text {
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 :deep(.ant-table-tbody > tr > td) {
   vertical-align: middle;
 }

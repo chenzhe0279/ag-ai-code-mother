@@ -67,7 +67,7 @@
 |------|------|
 | 框架 | Vue 3.5（Composition API）+ TypeScript 5.8 |
 | 构建 | Vite 7、vue-tsc 类型检查 |
-| UI | Ant Design Vue 4（暗色主题）、markdown-it + highlight.js（AI 消息渲染） |
+| UI | Ant Design Vue 4（中性浅色玻璃主题）、markdown-it + highlight.js（AI 消息渲染） |
 | 状态 / 路由 | Pinia 3、Vue Router 4 |
 | 网络 | Axios（统一响应拦截）、原生 EventSource（SSE 流式） |
 | 接口生成 | @umijs/openapi（openapi2ts，依据后端 OpenAPI 文档生成） |
@@ -868,7 +868,7 @@ npm run preview    # 本地预览构建产物
 
 ### 9.1 技术栈与构建
 
-Vue 3.5 + TypeScript 5.8 + Vite 7 + Ant Design Vue 4（全局暗色主题 `darkAlgorithm`）+ Pinia 3 + Vue Router 4 + Axios；AI 消息渲染使用 markdown-it + highlight.js。接口层由 `@umijs/openapi`（`npm run openapi2ts`）依据后端 OpenAPI 文档自动生成到 `src/api/`，与后端接口保持强同步。
+Vue 3.5 + TypeScript 5.8 + Vite 7 + Ant Design Vue 4（中性浅色玻璃主题）+ Pinia 3 + Vue Router 4 + Axios；AI 消息渲染使用 markdown-it + highlight.js。接口层由 `@umijs/openapi`（`npm run openapi2ts`）依据后端 OpenAPI 文档自动生成到 `src/api/`，与后端接口保持强同步。
 
 ### 9.2 目录结构
 
@@ -878,7 +878,7 @@ ag-ai-code-mother-frontend/
 ├── openapi2ts.config.ts      # OpenAPI → TS 代码生成配置
 └── src/
     ├── main.ts               # 注册 Pinia / Router / Antd，引入权限守卫
-    ├── App.vue               # 基础布局 + 动态背景 + 暗色主题
+    ├── App.vue               # 基础布局与全局组件主题
     ├── access.ts             # 全局路由守卫（登录态预取 + /admin 权限校验）
     ├── request.ts            # axios 封装（baseURL / withCredentials / 40100 拦截跳登录）
     ├── config/env.ts         # API_BASE_URL / DEPLOY_DOMAIN / 预览 URL 拼接工具

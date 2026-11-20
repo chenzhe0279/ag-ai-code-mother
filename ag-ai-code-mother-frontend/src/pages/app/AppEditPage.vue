@@ -1,11 +1,11 @@
 <template>
-  <div id="appEditPage">
-    <div class="page-header">
+  <div id="appEditPage" class="workspace-page">
+    <div class="page-heading">
       <h1>编辑应用信息</h1>
     </div>
 
     <div class="edit-container">
-      <a-card title="基本信息" :loading="loading">
+      <a-card class="glass-panel" title="基本信息" :loading="loading">
         <a-form
           :model="formData"
           :rules="rules"
@@ -103,7 +103,7 @@
       </a-card>
 
       <!-- 应用信息展示 -->
-      <a-card title="应用信息" style="margin-top: 24px">
+      <a-card class="glass-panel" title="应用信息">
         <a-descriptions :column="2" bordered>
           <a-descriptions-item label="应用ID">
             {{ appInfo?.id }}
@@ -352,48 +352,37 @@ onMounted(() => {
 
 <style scoped>
 #appEditPage {
-  padding: 24px;
-  max-width: 1000px;
-  margin: 0 auto;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-}
-
-.page-header h1 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
+  width: min(930px, var(--workspace-width));
+  padding-block: clamp(30px, 5vw, 66px) 15px;
 }
 
 .edit-container {
-  border-radius: 8px;
+  display: grid;
+  gap: 18px;
 }
-
+.edit-container :deep(.ant-card-head) {
+  border-bottom-color: var(--line-soft);
+}
+.edit-container :deep(.ant-card-body) {
+  padding: clamp(15px, 2.6vw, 25px);
+}
 .cover-preview {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid #e8e8e8;
-  border-radius: 6px;
-  background: #fafafa;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface);
 }
-
 .form-tip {
-  font-size: 12px;
-  color: #999;
   margin-top: 4px;
+  color: var(--text-faint);
+  font-size: 12px;
 }
-
-:deep(.ant-card-head) {
-  background: #fafafa;
-}
-
-:deep(.ant-descriptions-item-label) {
-  background: #fafafa;
+.edit-container :deep(.ant-descriptions-item-label) {
+  background: #edf2f7;
   font-weight: 500;
+}
+.edit-container :deep(.ant-descriptions-item-content) {
+  overflow-wrap: anywhere;
 }
 </style>

@@ -1,13 +1,16 @@
 <template>
-  <div id="appChatPage">
+  <div id="appChatPage" class="workspace-page">
     <!-- 顶部栏 -->
-    <div class="header-bar">
+    <div class="header-bar glass-panel">
       <div class="header-left">
-        <h1 class="app-name">{{ appInfo?.appName || '网站生成器' }}</h1>
-        <a-tag v-if="appInfo?.codeGenType" color="blue" class="code-gen-type-tag">
+        <RouterLink class="workspace-back" to="/" aria-label="返回创作台"
+          ><ArrowLeftOutlined
+        /></RouterLink>
+        <h1 class="app-name">{{ appInfo?.appName || '应用工作台' }}</h1>
+        <a-tag v-if="appInfo?.codeGenType" class="code-gen-type-tag">
           {{ formatCodeGenType(appInfo.codeGenType) }}
         </a-tag>
-        <a-tag v-if="appInfo?.currentVersion" color="geekblue" class="code-gen-type-tag">
+        <a-tag v-if="appInfo?.currentVersion" class="code-gen-type-tag">
           v{{ appInfo.currentVersion }}
         </a-tag>
         <a-tag
@@ -38,8 +41,7 @@
           历史版本
         </a-button>
         <a-button
-          type="primary"
-          ghost
+          type="default"
           @click="downloadCode()"
           :loading="downloading"
           :disabled="!isOwner"
@@ -73,9 +75,23 @@
     <!-- 主要内容区域 -->
     <div class="main-content">
       <!-- 左侧对话区域 -->
-      <div class="chat-section">
+      <section class="chat-section glass-panel" aria-labelledby="workspace-chat-title">
+        <header class="panel-header">
+          <span class="panel-icon"><MessageOutlined /></span>
+          <div>
+            <h2 id="workspace-chat-title">应用对话</h2>
+            <p>{{ isGenerating ? '正在生成' : isOwner ? '描述你想调整的内容' : '查看对话记录' }}</p>
+          </div>
+        </header>
         <!-- 消息区域 -->
         <div class="messages-container" ref="messagesContainer">
+          <div v-if="!messages.length" class="chat-empty">
+            <a-spin v-if="!appInfo || loadingHistory" aria-label="正在加载对话" />
+            <template v-else>
+              <span class="panel-icon"><MessageOutlined /></span>
+              <p>暂无对话消息</p>
+            </template>
+          </div>
           <!-- 加载更多按钮 -->
           <div v-if="hasMoreHistory" class="load-more-container">
             <a-button type="link" @click="loadMoreHistory" :loading="loadingHistory" size="small">
@@ -84,14 +100,18 @@
           </div>
           <div v-for="(message, index) in messages" :key="index" class="message-item">
             <div v-if="message.type === 'user'" class="user-message">
-              <div class="message-content">{{ message.content }}</div>
+              <div class="message-content user-text">{{ message.content }}</div>
               <div class="message-avatar">
-                <a-avatar :src="resolveAvatarUrl(loginUserStore.loginUser.userAvatar)" />
+                <a-avatar :src="resolveAvatarUrl(loginUserStore.loginUser.userAvatar)">
+                  {{ (loginUserStore.loginUser.userName || '你').slice(0, 1) }}
+                </a-avatar>
               </div>
             </div>
             <div v-else class="ai-message">
               <div class="message-avatar">
-                <a-avatar :src="aiAvatar" />
+                <a-avatar role="img" aria-label="AI 助手">
+                  <template #icon><RobotOutlined /></template>
+                </a-avatar>
               </div>
               <div class="message-content">
                 <MarkdownRenderer v-if="message.content" :content="message.content" />
@@ -151,7 +171,7 @@
                 :placeholder="getInputPlaceholder()"
                 :rows="4"
                 :maxlength="1000"
-                @keydown.enter.prevent="sendMessage"
+                aria-label="应用对话输入"
                 :disabled="isGenerating || !isOwner"
               />
             </a-tooltip>
@@ -161,7 +181,8 @@
               :placeholder="getInputPlaceholder()"
               :rows="4"
               :maxlength="1000"
-              @keydown.enter.prevent="sendMessage"
+              aria-label="应用对话输入"
+              @keydown.enter.exact="handleMessageEnter"
               :disabled="isGenerating"
             />
             <div class="input-actions">
@@ -172,6 +193,8 @@
               >
                 <a-button
                   class="edit-toggle-btn"
+                  :aria-label="isEditMode ? '退出可视化编辑' : '进入可视化编辑'"
+                  :aria-pressed="isEditMode"
                   :class="{ 'edit-mode-active': isEditMode }"
                   :type="isEditMode ? 'primary' : 'default'"
                   :disabled="isGenerating || !previewReady"
@@ -185,12 +208,19 @@
               <a-button
                 v-if="isGenerating"
                 class="stop-btn"
+                aria-label="停止生成"
                 title="停止生成"
                 @click="stopGeneration"
               >
-                ■
+                <template #icon><StopOutlined /></template>
               </a-button>
-              <a-button v-else type="primary" @click="sendMessage" :disabled="!isOwner">
+              <a-button
+                v-else
+                type="primary"
+                aria-label="发送消息"
+                @click="sendMessage"
+                :disabled="!isOwner"
+              >
                 <template #icon>
                   <SendOutlined />
                 </template>
@@ -198,11 +228,14 @@
             </div>
           </div>
         </div>
-      </div>
+      </section>
       <!-- 右侧网页展示区域 -->
-      <div class="preview-section">
-        <div class="preview-header">
-          <h3>生成后的网页展示</h3>
+      <section class="preview-section glass-panel" aria-labelledby="workspace-preview-title">
+        <div class="panel-header preview-header">
+          <span class="panel-icon"><LayoutOutlined /></span>
+          <div>
+            <h2 id="workspace-preview-title">网页预览</h2>
+          </div>
           <div class="preview-actions">
             <a-button v-if="previewUrl" type="link" @click="openInNewTab">
               <template #icon>
@@ -225,7 +258,7 @@
         </div>
         <div class="preview-content">
           <div v-if="!previewUrl && !isGenerating && !previewError" class="preview-placeholder">
-            <div class="placeholder-icon">🌐</div>
+            <span class="panel-icon"><LayoutOutlined /></span>
             <p>网站文件生成完成后将在这里展示</p>
           </div>
           <div v-else-if="isGenerating" class="preview-loading">
@@ -238,7 +271,7 @@
           </div>
           <div v-else-if="previewError" class="preview-loading preview-error">
             <p>{{ previewError }}</p>
-            <a-button type="primary" ghost @click="updatePreview">重新加载预览</a-button>
+            <a-button @click="updatePreview">重新加载预览</a-button>
           </div>
           <iframe
             v-else
@@ -246,11 +279,11 @@
             :key="previewFrameKey"
             :src="previewUrl"
             class="preview-iframe"
-            frameborder="0"
+            title="生成的应用预览"
             @load="onIframeLoad"
           ></iframe>
         </div>
-      </div>
+      </section>
     </div>
 
     <!-- 应用详情弹窗 -->
@@ -270,7 +303,7 @@
     />
 
     <!-- 历史版本抽屉 -->
-    <a-drawer v-model:open="versionDrawerVisible" title="历史版本" width="420">
+    <a-drawer v-model:open="versionDrawerVisible" title="历史版本" width="min(420px, 100vw)">
       <a-spin :spinning="versionLoading">
         <a-empty v-if="!versionList.length" description="暂无历史版本" />
         <div v-for="v in versionList" :key="v.version" class="version-item">
@@ -313,11 +346,11 @@ import request from '@/request'
 import MarkdownRenderer from '@/components/MarkdownRenderer.vue'
 import AppDetailModal from '@/components/AppDetailModal.vue'
 import DeploySuccessModal from '@/components/DeploySuccessModal.vue'
-import aiAvatar from '@/assets/aiAvatar.png'
 import { API_BASE_URL, getStaticPreviewUrl, resolveAvatarUrl } from '@/config/env'
 import { VisualEditor, type ElementInfo } from '@/utils/visualEditor'
 
 import {
+  ArrowLeftOutlined,
   CloudUploadOutlined,
   CloudDownloadOutlined,
   SendOutlined,
@@ -326,7 +359,11 @@ import {
   DownloadOutlined,
   EditOutlined,
   HistoryOutlined,
+  LayoutOutlined,
+  MessageOutlined,
   ReloadOutlined,
+  RobotOutlined,
+  StopOutlined,
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -610,9 +647,15 @@ const sendInitialMessage = async (prompt: string) => {
   await generateCode(prompt, aiMessageIndex)
 }
 
+function handleMessageEnter(event: KeyboardEvent) {
+  if (event.isComposing || event.keyCode === 229) return
+  event.preventDefault()
+  void sendMessage()
+}
+
 // 发送消息
 const sendMessage = async () => {
-  if (!userInput.value.trim() || isGenerating.value) {
+  if (!isOwner.value || !userInput.value.trim() || isGenerating.value) {
     return
   }
 
@@ -1062,152 +1105,166 @@ onUnmounted(() => {
 
 <style scoped>
 #appChatPage {
-  /* 固定视口高度（扣除顶部导航与页脚），消息增多时内部滚动，页面不被撑长 */
-  height: calc(100vh - 115px);
-  display: flex;
-  flex-direction: column;
-  padding: 16px 24px;
+  --panel-spacing: clamp(12px, 1.5vw, 20px);
+  display: grid;
+  gap: var(--panel-spacing);
+  margin-block: clamp(20px, 3.4vw, 40px) 8px;
 }
 
-@supports (height: 100dvh) {
-  #appChatPage {
-    height: calc(100dvh - 115px);
-  }
-}
-
-/* 顶部栏 */
 .header-bar {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  padding: 12px 18px;
-  border: 1px solid rgba(157, 173, 222, 0.14);
-  border-radius: 16px;
-  background: rgba(16, 25, 50, 0.42);
-  backdrop-filter: blur(10px);
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 13px clamp(12px, 2vw, 22px);
+  border-radius: 21px;
 }
 
-.header-left {
+.header-left,
+.header-right,
+.version-info,
+.preview-actions {
   display: flex;
+  min-width: 0;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
-.code-gen-type-tag {
-  font-size: 12px;
+.workspace-back,
+.panel-icon {
+  display: grid;
+  width: 37px;
+  height: 37px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: #f3f6fa;
+  color: #4b5c74;
+  font-size: 17px;
 }
 
-.version-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 8px;
-  border-bottom: 1px solid rgba(157, 173, 222, 0.14);
+.workspace-back:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
-
-.version-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.version-no {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.version-time {
-  font-size: 12px;
-  color: var(--text-faint);
-}
-
 .app-name {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  margin: 0 3px 0 2px;
   color: var(--text);
+  font-size: clamp(18px, 2.2vw, 24px);
+  font-weight: 720;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.code-gen-type-tag {
+  margin-inline: 0;
+  border-radius: 18px;
 }
 
-.header-right {
-  display: flex;
-  gap: 12px;
-}
-
-/* 主要内容区域 */
 .main-content {
-  flex: 1;
-  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
+  min-width: 0;
+  gap: var(--panel-spacing);
+}
+
+.chat-section,
+.preview-section {
   display: flex;
-  gap: 16px;
-  padding: 8px;
+  height: max(540px, calc(100dvh - 224px));
+  flex-direction: column;
   overflow: hidden;
 }
 
-/* 左侧对话区域 */
-.chat-section {
-  flex: 2;
-  min-height: 0;
+.panel-header {
   display: flex;
-  flex-direction: column;
-  border: 1px solid rgba(157, 173, 222, 0.14);
-  border-radius: 16px;
-  background: rgba(13, 20, 42, 0.42);
-  backdrop-filter: blur(10px);
-  overflow: hidden;
+  min-height: 68px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px var(--panel-spacing);
+  border-bottom: 1px solid var(--line-soft);
+}
+.panel-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+.panel-header p {
+  margin-top: 2px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.preview-header {
+  flex-wrap: wrap;
+}
+.preview-actions {
+  gap: 2px;
+  margin-inline-start: auto;
+}
+.preview-actions :deep(.ant-btn) {
+  padding-inline: 7px;
 }
 
 .messages-container {
-  flex: 0.9;
   min-height: 0;
-  padding: 16px;
+  flex: 1;
+  padding: var(--panel-spacing);
   overflow-y: auto;
-  scroll-behavior: smooth;
+  scrollbar-width: thin;
 }
 
-.message-item {
-  margin-bottom: 12px;
+.chat-empty {
+  display: grid;
+  min-height: 170px;
+  place-content: center;
+  justify-items: center;
+  gap: 9px;
+  color: var(--text-faint);
 }
 
-.user-message {
-  display: flex;
-  justify-content: flex-end;
-  align-items: flex-start;
-  gap: 8px;
+.message-item + .message-item {
+  margin-top: 13px;
 }
-
+.user-message,
 .ai-message {
   display: flex;
-  justify-content: flex-start;
   align-items: flex-start;
   gap: 8px;
+}
+.user-message {
+  justify-content: flex-end;
+}
+.message-avatar {
+  flex: none;
+}
+.message-avatar :deep(.ant-avatar) {
+  background: #e2e8f2;
+  color: var(--text-dim);
 }
 
 .message-content {
-  max-width: 70%;
-  padding: 12px 16px;
-  border: 1px solid rgba(138, 166, 232, 0.26);
+  min-width: 0;
+  max-width: calc(100% - 42px);
+  padding: 10px 13px;
+  overflow: auto;
+  border: 1px solid var(--glass-edge);
   border-radius: 5px 17px 17px 17px;
-  background: rgba(20, 30, 58, 0.85);
-  backdrop-filter: blur(8px);
-  color: #f0f4ff;
+  background: #fff;
+  color: var(--text);
   font-size: 14px;
-  line-height: 1.9;
-  word-wrap: break-word;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
 }
-
 .user-message .message-content {
-  border-color: rgba(196, 156, 255, 0.38);
+  border-color: #dce3ed;
   border-radius: 17px 5px 17px 17px;
-  background: rgba(58, 44, 110, 0.85);
-  color: #ffffff;
+  background: #e8edf4;
 }
-
-.ai-message .message-content {
-  padding: 10px 14px;
-}
-
-.ai-message .message-content :deep(code) {
-  color: #c3a6ff;
+.user-text {
+  white-space: pre-wrap;
 }
 
 .loading-indicator {
@@ -1216,300 +1273,183 @@ onUnmounted(() => {
   gap: 8px;
   color: var(--text-dim);
 }
-
 .thinking-dots {
   display: inline-flex;
   gap: 4px;
 }
-
 .thinking-dots b {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: #b9c8ff;
-  box-shadow: 0 0 8px rgba(142, 166, 255, 0.55);
+  background: var(--text-faint);
   animation: think-blink 1.2s infinite ease-in-out;
 }
-
 .thinking-dots b:nth-child(2) {
   animation-delay: 0.2s;
 }
-
 .thinking-dots b:nth-child(3) {
   animation-delay: 0.4s;
 }
-
 @keyframes think-blink {
   0%,
   80%,
   100% {
-    opacity: 0.25;
-    transform: translateY(0);
+    opacity: 0.35;
   }
   40% {
     opacity: 1;
-    transform: translateY(-3px);
+    transform: translateY(-2px);
   }
 }
-
-.stop-btn {
-  width: 38px;
-  height: 38px;
-  padding: 0;
-  font-size: 14px;
-}
-
-.messages-container {
-  /* 隐藏滚动条：仅保留滚轮 / 触控板滚动 */
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.messages-container::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
-.message-avatar {
-  flex-shrink: 0;
-}
-
-.loading-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-dim);
-}
-
-/* 加载更多按钮 */
 .load-more-container {
-  text-align: center;
-  padding: 8px 0;
-  margin-bottom: 16px;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 13px;
 }
 
-/* 输入区域 */
 .input-container {
-  padding: 12px 16px 16px;
-  background: transparent;
+  padding: var(--panel-spacing);
 }
-
 .input-wrapper {
-  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #fff;
 }
-
+.input-wrapper:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
 .input-wrapper :deep(.ant-input) {
-  padding-right: 96px;
-  background: rgba(17, 26, 49, 0.42);
-  border: 1px solid rgba(175, 190, 225, 0.28);
-  border-radius: 14px;
-  color: #f2f5ff;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  padding: 5px 6px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  resize: vertical;
 }
-
-.input-wrapper :deep(.ant-input::-webkit-scrollbar) {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
 .input-wrapper :deep(.ant-input::placeholder) {
-  color: #7987a7;
+  color: var(--text-faint);
 }
-
 .input-actions {
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
-
-.edit-toggle-btn {
+.input-actions :deep(.ant-btn-icon-only) {
   width: 38px;
-  height: 38px;
-  padding: 0;
 }
-
-.edit-toggle-btn.edit-mode-active {
-  border-color: #52c41a !important;
-  background: #52c41a !important;
-  color: #fff !important;
-  box-shadow: 0 0 0 3px rgba(82, 196, 26, 0.14);
-}
-
-.edit-toggle-btn.edit-mode-active:hover {
-  border-color: #73d13d !important;
-  background: #73d13d !important;
-}
-
-/* 右侧预览区域 */
-.preview-section {
-  flex: 3;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid rgba(157, 173, 222, 0.14);
-  border-radius: 16px;
-  background: rgba(13, 20, 42, 0.42);
-  backdrop-filter: blur(10px);
-  overflow: hidden;
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid rgba(157, 173, 222, 0.14);
-}
-
-.preview-header h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-}
-
-.preview-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.preview-content {
-  flex: 1;
-  min-height: 0;
-  position: relative;
-  overflow: hidden;
-}
-
-.preview-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-faint);
-}
-
-.placeholder-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-
-.preview-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-faint);
-}
-
-.preview-loading p {
-  margin-top: 16px;
-}
-
-.preview-error {
-  gap: 4px;
-  padding: 24px;
-  text-align: center;
-}
-
-.preview-iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
+.stop-btn {
+  color: var(--danger);
 }
 
 .selected-element-alert {
-  margin: 0 16px;
+  margin-inline: var(--panel-spacing);
+  max-height: 35%;
+  overflow-y: auto;
+}
+.selected-element-info {
+  overflow-wrap: anywhere;
+}
+.element-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+.element-tag {
+  color: var(--text);
+  font-weight: 700;
+}
+.element-id {
+  color: var(--success);
+}
+.element-class {
+  color: var(--warning);
+}
+.element-selector-code {
+  color: var(--text);
+  font-family: var(--font-mono);
 }
 
-/* 响应式设计 */
-@media (max-width: 1024px) {
-  .main-content {
-    flex-direction: column;
-  }
+.preview-content {
+  min-height: 0;
+  flex: 1;
+  margin: var(--panel-spacing);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: #fff;
+}
+.preview-placeholder,
+.preview-loading {
+  display: grid;
+  height: 100%;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 12px;
+  color: var(--text-faint);
+  text-align: center;
+}
+.preview-placeholder {
+  background:
+    radial-gradient(ellipse at 62% 13%, #fff, transparent 62%),
+    linear-gradient(145deg, #f5f7fa, #eaf0f6);
+}
+.preview-placeholder .panel-icon {
+  width: 50px;
+  height: 50px;
+  font-size: 22px;
+  background: #fff;
+}
+.preview-error {
+  color: var(--danger);
+}
+.preview-iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
 
-  .chat-section,
+.version-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  column-gap: 6px;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.version-no {
+  color: var(--text);
+  font-weight: 650;
+}
+.version-time {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+@media (max-width: 840px) {
+  .main-content {
+    grid-template-columns: 1fr;
+  }
+  .chat-section {
+    height: max(480px, 64svh);
+  }
   .preview-section {
-    flex: none;
-    height: 50vh;
+    height: max(400px, 68svh);
   }
 }
-
-@media (max-width: 768px) {
-  .header-bar {
-    padding: 12px 16px;
+@media (max-width: 470px) {
+  .header-right {
+    gap: 6px;
   }
-
-  .app-name {
-    font-size: 16px;
-  }
-
-  .main-content {
-    padding: 8px;
-    gap: 8px;
-  }
-
-  .message-content {
-    max-width: 85%;
-  }
-
-  /* 选中元素信息样式 */
-  .selected-element-alert {
-    margin: 0 16px;
-  }
-
-  .selected-element-info {
-    line-height: 1.4;
-  }
-
-  .element-header {
-    margin-bottom: 8px;
-  }
-
-  .element-details {
-    margin-top: 8px;
-  }
-
-  .element-item {
-    margin-bottom: 4px;
-    font-size: 13px;
-  }
-
-  .element-item:last-child {
-    margin-bottom: 0;
-  }
-
-  .element-tag {
-    font-family: 'Monaco', 'Menlo', monospace;
-    font-size: 14px;
-    font-weight: 600;
-    color: #8fd8ff;
-  }
-
-  .element-id {
-    color: #28a745;
-    margin-left: 4px;
-  }
-
-  .element-class {
-    color: #ffc107;
-    margin-left: 4px;
-  }
-
-  .element-selector-code {
-    font-family: 'Monaco', 'Menlo', monospace;
-    background: rgba(9, 17, 39, 0.5);
-    padding: 2px 4px;
-    border-radius: 3px;
-    font-size: 12px;
-    color: #ffb0bc;
-    border: 1px solid rgba(168, 186, 235, 0.24);
+  .header-right :deep(.ant-btn) {
+    padding-inline: 9px;
   }
 }
 </style>

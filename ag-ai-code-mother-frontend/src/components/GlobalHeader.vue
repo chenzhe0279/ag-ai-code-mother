@@ -1,293 +1,265 @@
-<template>
-  <a-layout-header class="header reveal" style="--rd: 240ms">
-    <div class="site-nav">
-      <!-- 左侧：品牌区 -->
-      <RouterLink to="/" class="brand">
-        <span class="brand-mark">✦</span>
-        <span class="brand-name">AI 零码</span>
-        <small>AI SPACE</small>
-      </RouterLink>
-      <!-- 中间：导航菜单 -->
-      <a-menu
-        v-model:selectedKeys="selectedKeys"
-        class="nav-menu"
-        mode="horizontal"
-        :items="menuItems"
-        @click="handleMenuClick"
-      />
-      <!-- 右侧：用户操作区域 -->
-      <div class="nav-user">
-        <template v-if="loginUserStore.loginUser.id">
-          <!-- 点击头像/昵称直接进入个人主页 -->
-          <button class="nav-chip" type="button" title="个人主页" @click="goProfile">
-            <span class="nav-chip-avatar">
-              <img
-                v-if="loginUserStore.loginUser.userAvatar"
-                :src="resolveAvatarUrl(loginUserStore.loginUser.userAvatar)"
-                alt=""
-              />
-              <span v-else>{{ (loginUserStore.loginUser.userName ?? '无')[0] }}</span>
-            </span>
-            <span>{{ loginUserStore.loginUser.userName ?? '无名' }}</span>
-            <em v-if="loginUserStore.loginUser.userRole === 'admin'">admin</em>
-          </button>
-          <button class="nav-link" type="button" @click="doLogout">退出</button>
-        </template>
-        <template v-else>
-          <a-button class="nav-link-btn" href="/user/login">登录</a-button>
-          <a-button class="nav-link-btn primary" href="/user/register">注册</a-button>
-        </template>
-      </div>
-    </div>
-  </a-layout-header>
-</template>
-
 <script setup lang="ts">
-import { computed, h, ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { type MenuProps, message } from 'ant-design-vue'
-import { useLoginUserStore } from '@/stores/loginUser.ts'
-import { userLogout } from '@/api/userController.ts'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { App, type MenuProps } from 'ant-design-vue'
+import { CodeOutlined, DownOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons-vue'
+import { useLoginUserStore } from '@/stores/loginUser'
+import { userLogout } from '@/api/userController'
 import { resolveAvatarUrl } from '@/config/env'
-import { HomeOutlined } from '@ant-design/icons-vue'
 
-const loginUserStore = useLoginUserStore()
+const route = useRoute()
 const router = useRouter()
-// 当前选中菜单
-const selectedKeys = ref<string[]>(['/'])
-// 监听路由变化，更新当前选中菜单
-router.afterEach((to) => {
-  selectedKeys.value = [to.path]
-})
+const loginUserStore = useLoginUserStore()
+const { message } = App.useApp()
 
-// 菜单配置项
-const originItems = [
-  {
-    key: '/',
-    icon: () => h(HomeOutlined),
-    label: '主页',
-    title: '主页',
-  },
-  {
-    key: '/admin/userManage',
-    label: '用户管理',
-    title: '用户管理',
-  },
-  {
-    key: '/admin/appManage',
-    label: '应用管理',
-    title: '应用管理',
-  },
-  {
-    key: '/admin/chatManage',
-    label: '对话管理',
-    title: '对话管理',
-  },
+const user = computed(() => loginUserStore.loginUser)
+const isAdmin = computed(() => user.value.userRole === 'admin')
+const isAuthPage = computed(() => route.path === '/user/login' || route.path === '/user/register')
+
+const adminLinks = [
+  { label: '用户管理', path: '/admin/userManage' },
+  { label: '应用管理', path: '/admin/appManage' },
+  { label: '对话管理', path: '/admin/chatManage' },
 ]
 
-// 过滤菜单项
-const filterMenus = (menus = [] as MenuProps['items']) => {
-  return menus?.filter((menu) => {
-    const menuKey = menu?.key as string
-    if (menuKey?.startsWith('/admin')) {
-      const loginUser = loginUserStore.loginUser
-      if (!loginUser || loginUser.userRole !== 'admin') {
-        return false
-      }
-    }
-    return true
-  })
-}
-
-// 展示在菜单的路由数组
-const menuItems = computed<MenuProps['items']>(() => filterMenus(originItems))
-
-// 处理菜单点击
-const handleMenuClick: MenuProps['onClick'] = (e) => {
-  const key = e.key as string
-  selectedKeys.value = [key]
-  // 跳转到对应页面
-  if (key.startsWith('/')) {
-    router.push(key)
+const onAccountAction: MenuProps['onClick'] = async ({ key }) => {
+  if (key === 'profile') {
+    await router.push('/user/profile')
+    return
   }
-}
 
-// 退出登录
-const doLogout = async () => {
-  const res = await userLogout()
-  if (res.data.code === 0) {
-    loginUserStore.setLoginUser({
-      userName: '未登录',
-    })
+  try {
+    const { data } = await userLogout()
+    if (data.code !== 0) {
+      message.error(data.message || '退出登录失败')
+      return
+    }
+    loginUserStore.setLoginUser({ userName: '未登录' })
     message.success('退出登录成功')
     await router.push('/user/login')
-  } else {
-    message.error('退出登录失败，' + res.data.message)
+  } catch {
+    message.error('退出登录失败，请重试')
   }
-}
-
-// 进入个人主页
-const goProfile = () => {
-  router.push('/user/profile')
 }
 </script>
 
-<style scoped>
-.header {
-  padding: 0 31px;
-  min-height: 64px;
-  display: flex;
-  align-items: center;
-  line-height: normal;
-}
+<template>
+  <header class="site-header workspace-page glass-panel">
+    <RouterLink to="/" class="brand" aria-label="AI 零码首页">
+      <span class="brand-mark"><CodeOutlined /></span>
+      <span>AI 零码</span>
+    </RouterLink>
 
-.site-nav {
+    <nav v-if="!isAuthPage" class="site-nav" aria-label="主导航">
+      <RouterLink to="/" :aria-current="route.path === '/' && (!route.hash || route.hash === '#create') ? 'page' : undefined"
+        >创作台</RouterLink
+      >
+      <RouterLink
+        v-if="user.id"
+        to="/#my-apps"
+        :aria-current="route.path === '/' && route.hash === '#my-apps' ? 'location' : undefined"
+        >我的作品</RouterLink
+      >
+      <RouterLink
+        to="/#featured"
+        :aria-current="route.path === '/' && route.hash === '#featured' ? 'location' : undefined"
+        >精选案例</RouterLink
+      >
+      <RouterLink
+        v-for="item in isAdmin ? adminLinks : []"
+        :key="item.path"
+        :to="item.path"
+        :aria-current="route.path === item.path ? 'page' : undefined"
+        >{{ item.label }}</RouterLink
+      >
+    </nav>
+
+    <div class="site-account">
+      <a-dropdown v-if="user.id" :trigger="['click']" placement="bottomRight">
+        <button class="account-button" type="button" aria-label="账号菜单" aria-haspopup="menu">
+          <a-avatar :src="resolveAvatarUrl(user.userAvatar)" :size="28">
+            {{ (user.userName || user.userAccount || '用').slice(0, 1) }}
+          </a-avatar>
+          <span class="account-name">{{ user.userName || user.userAccount || '用户' }}</span>
+          <DownOutlined class="account-chevron" />
+        </button>
+        <template #overlay>
+          <a-menu @click="onAccountAction">
+            <a-menu-item key="profile">
+              <template #icon><UserOutlined /></template>
+              个人主页
+            </a-menu-item>
+            <a-menu-item key="logout">
+              <template #icon><LogoutOutlined /></template>
+              退出登录
+            </a-menu-item>
+          </a-menu>
+        </template>
+      </a-dropdown>
+      <template v-else>
+        <RouterLink
+          class="account-link"
+          to="/user/login"
+          :aria-current="route.path === '/user/login' ? 'page' : undefined"
+          >登录</RouterLink
+        >
+        <RouterLink
+          class="account-link account-link--primary"
+          to="/user/register"
+          :aria-current="route.path === '/user/register' ? 'page' : undefined"
+          >注册</RouterLink
+        >
+      </template>
+    </div>
+  </header>
+</template>
+
+<style scoped>
+.site-header {
+  position: sticky;
+  top: 14px;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  width: 100%;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 16px;
+  padding: 9px 11px 9px 13px;
+  border-radius: 22px;
+}
+
+.brand,
+.site-account,
+.site-nav,
+.account-button {
+  display: flex;
+  align-items: center;
 }
 
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font:
-    500 13px 'DM Mono',
-    monospace;
-  letter-spacing: 0.13em;
+  gap: 11px;
   color: var(--text);
+  font-size: 17px;
+  font-weight: 750;
   white-space: nowrap;
 }
 
 .brand-mark {
-  font-size: 20px;
-  color: #e0e8ff;
-  text-shadow: 0 0 22px #91b0ff;
-  animation: brand-pulse 3.6s ease-in-out infinite;
+  display: grid;
+  width: 39px;
+  height: 39px;
+  place-items: center;
+  border: 1px solid #ffffff44;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(145deg, #536071, #222b39);
+  box-shadow:
+    inset 0 1px 1px #ffffff38,
+    0 10px 18px -12px #292f39;
 }
 
-@keyframes brand-pulse {
-  50% {
-    text-shadow: 0 0 34px #c3a6ff;
-    transform: scale(1.08);
-  }
-}
-
-.brand-name {
-  font-family: 'Noto Sans SC', system-ui, sans-serif;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-}
-
-.brand small {
-  color: #8294c4;
-  font-size: 9px;
-  letter-spacing: 0.16em;
-}
-
-.nav-menu {
-  flex: 1;
+.site-nav {
   min-width: 0;
+  flex-wrap: wrap;
   justify-content: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 20px;
+  background: #f4f6fa;
 }
 
-.nav-user {
-  display: flex;
+.site-nav a,
+.account-link {
+  display: inline-flex;
+  min-height: 34px;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  padding-inline: 13px;
+  border-radius: 16px;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background 180ms ease,
+    color 180ms ease;
+}
+
+.site-nav a:hover,
+.account-link:hover {
+  color: var(--accent);
+}
+.site-nav a[aria-current] {
+  background: #fff;
+  box-shadow: 0 3px 10px -6px #40516d75;
+  color: var(--accent);
+}
+
+.site-account {
+  justify-content: flex-end;
+  gap: 4px;
+  margin-left: auto;
+}
+.site-header:has(.site-nav) .site-account {
+  margin-left: 0;
+}
+.account-link--primary {
+  background: var(--accent);
+  color: #fff;
+}
+.account-link--primary:hover {
+  background: var(--accent-hover);
+  color: #fff;
+}
+
+.account-button {
+  gap: 8px;
+  padding: 3px 8px 3px 3px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.account-button :deep(.ant-avatar) {
+  background: #e4eaf3;
+  color: #344357;
+}
+.account-name {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.nav-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(164, 184, 232, 0.23);
-  border-radius: 12px;
-  padding: 4px 12px 4px 6px;
-  background: rgba(17, 26, 49, 0.32);
-  color: #e3e9fb;
-  font-size: 13px;
-  cursor: pointer;
-  transition: 0.2s;
-  backdrop-filter: blur(8px);
-}
-
-.nav-chip:hover {
-  border-color: rgba(185, 204, 255, 0.6);
-}
-
-.nav-chip-avatar {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  overflow: hidden;
-  border-radius: 9px;
-  background: var(--grad-btn);
-  color: #fff;
-  font-weight: 700;
-  font-size: 12px;
-}
-
-.nav-chip-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.nav-chip em {
-  font-style: normal;
+.account-chevron {
+  color: var(--text-faint);
   font-size: 10px;
-  color: #c9b2ff;
 }
 
-.nav-link-btn {
-  border: 1px solid rgba(164, 184, 232, 0.23);
-  background: rgba(17, 26, 49, 0.32);
-  color: #cdd8f5;
-  backdrop-filter: blur(8px);
-}
-
-/* 顶部「退出」按钮 */
-.nav-link {
-  border: 1px solid rgba(164, 184, 232, 0.23);
-  border-radius: 10px;
-  padding: 6px 14px;
-  background: rgba(17, 26, 49, 0.32);
-  color: #cdd8f5;
-  font-size: 13px;
-  cursor: pointer;
-  transition: 0.2s;
-  backdrop-filter: blur(8px);
-}
-
-.nav-link:hover {
-  border-color: rgba(185, 204, 255, 0.6);
-  color: #fff;
-}
-
-.nav-link-btn.primary {
-  background: linear-gradient(
-    135deg,
-    rgba(142, 162, 255, 0.35),
-    rgba(109, 124, 255, 0.3) 48%,
-    rgba(165, 95, 224, 0.35)
-  );
-  border-color: transparent;
-  color: #fff;
-  box-shadow: 0 5px 18px rgba(109, 124, 255, 0.2);
-}
-
-@media (max-width: 780px) {
-  .header {
-    padding: 0 16px;
+@media (max-width: 920px) {
+  .site-nav a {
+    padding-inline: 9px;
   }
-  .brand small {
-    display: none;
+}
+
+@media (max-width: 760px) {
+  .site-header {
+    position: relative;
+    top: auto;
+    margin-top: 10px;
+  }
+  .site-nav {
+    order: 3;
+    width: 100%;
+  }
+  .site-nav a {
+    min-height: 32px;
+  }
+  .site-account {
+    margin-left: auto;
   }
 }
 </style>

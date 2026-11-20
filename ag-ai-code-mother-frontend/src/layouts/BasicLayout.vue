@@ -1,32 +1,36 @@
-<template>
-  <a-layout class="basic-layout">
-    <!-- 顶部导航栏 -->
-    <GlobalHeader />
-    <!-- 主要内容区域 -->
-    <a-layout-content class="main-content">
-      <router-view />
-    </a-layout-content>
-    <!-- 底部版权信息 -->
-    <GlobalFooter />
-  </a-layout>
-</template>
-
 <script setup lang="ts">
+import { useRoute } from 'vue-router'
 import GlobalHeader from '@/components/GlobalHeader.vue'
 import GlobalFooter from '@/components/GlobalFooter.vue'
+
+const route = useRoute()
 </script>
+
+<template>
+  <div class="basic-layout" :class="{ 'basic-layout--home': route.path === '/' }">
+    <a class="skip-link" href="#main-content">跳到主要内容</a>
+    <GlobalHeader />
+    <main id="main-content" class="main-content" tabindex="-1">
+      <router-view />
+    </main>
+    <GlobalFooter />
+  </div>
+</template>
 
 <style scoped>
 .basic-layout {
-  background: none;
-  position: relative;
-  z-index: 1;
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  gap: 0;
+}
+
+.basic-layout--home {
+  padding-bottom: calc(78px + env(safe-area-inset-bottom));
 }
 
 .main-content {
-  width: 100%;
-  padding: 0;
-  background: none;
-  margin: 0;
+  min-width: 0;
+  flex: 1;
 }
 </style>

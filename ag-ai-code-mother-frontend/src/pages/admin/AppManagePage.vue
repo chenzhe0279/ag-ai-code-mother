@@ -1,147 +1,150 @@
 <template>
-  <div id="appManagePage">
-    <!-- 搜索表单 -->
-    <a-form layout="inline" :model="searchParams" @finish="doSearch">
-      <a-form-item label="应用名称">
-        <a-input v-model:value="searchParams.appName" placeholder="输入应用名称" />
-      </a-form-item>
-      <a-form-item label="创建者">
-        <a-input v-model:value="searchParams.userId" placeholder="输入用户ID" />
-      </a-form-item>
-      <a-form-item label="生成类型">
-        <a-select
-          v-model:value="searchParams.codeGenType"
-          placeholder="选择生成类型"
-          style="width: 150px"
-        >
-          <a-select-option :value="undefined">全部</a-select-option>
-          <a-select-option
-            v-for="option in CODE_GEN_TYPE_OPTIONS"
-            :key="option.value"
-            :value="option.value"
+  <div id="appManagePage" class="admin-page workspace-page">
+    <header class="page-heading"><h1>应用管理</h1></header>
+    <div class="admin-panel glass-panel">
+      <!-- 搜索表单 -->
+      <a-form layout="inline" :model="searchParams" @finish="doSearch">
+        <a-form-item label="应用名称">
+          <a-input v-model:value="searchParams.appName" placeholder="输入应用名称" />
+        </a-form-item>
+        <a-form-item label="创建者">
+          <a-input v-model:value="searchParams.userId" placeholder="输入用户ID" />
+        </a-form-item>
+        <a-form-item label="生成类型">
+          <a-select
+            v-model:value="searchParams.codeGenType"
+            placeholder="选择生成类型"
+            style="width: 150px"
           >
-            {{ option.label }}
-          </a-select-option>
-        </a-select>
-      </a-form-item>
-      <a-form-item label="部署状态">
-        <a-select
-          v-model:value="searchParams.deployStatus"
-          placeholder="全部"
-          style="width: 130px"
-          allow-clear
-        >
-          <a-select-option :value="undefined">全部</a-select-option>
-          <a-select-option value="online">已上线</a-select-option>
-          <a-select-option value="offline">已下线</a-select-option>
-        </a-select>
-      </a-form-item>
-      <a-form-item label="生成状态">
-        <a-select
-          v-model:value="searchParams.genStatus"
-          placeholder="全部"
-          style="width: 130px"
-          allow-clear
-        >
-          <a-select-option :value="undefined">全部</a-select-option>
-          <a-select-option value="not_start">未开始</a-select-option>
-          <a-select-option value="generating">生成中</a-select-option>
-          <a-select-option value="succeeded">生成成功</a-select-option>
-          <a-select-option value="failed">生成失败</a-select-option>
-        </a-select>
-      </a-form-item>
-      <a-form-item label="可见范围">
-        <a-select
-          v-model:value="searchParams.visibility"
-          placeholder="全部"
-          style="width: 120px"
-          allow-clear
-        >
-          <a-select-option :value="undefined">全部</a-select-option>
-          <a-select-option value="public">公开</a-select-option>
-          <a-select-option value="private">私有</a-select-option>
-        </a-select>
-      </a-form-item>
-      <a-form-item label="标签">
-        <a-input v-model:value="searchParams.tagName" placeholder="输入标签筛选" />
-      </a-form-item>
-      <a-form-item>
-        <a-button type="primary" html-type="submit">搜索</a-button>
-      </a-form-item>
-    </a-form>
-    <a-divider />
-
-    <!-- 表格 -->
-    <a-table
-      :columns="columns"
-      :data-source="data"
-      :pagination="pagination"
-      @change="doTableChange"
-      :scroll="{ x: 1600 }"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'cover'">
-          <a-image v-if="record.cover" :src="record.cover" :width="80" :height="60" />
-          <div v-else class="no-cover">无封面</div>
-        </template>
-        <template v-else-if="column.dataIndex === 'initPrompt'">
-          <a-tooltip :title="record.initPrompt">
-            <div class="prompt-text">{{ record.initPrompt }}</div>
-          </a-tooltip>
-        </template>
-        <template v-else-if="column.dataIndex === 'codeGenType'">
-          {{ formatCodeGenType(record.codeGenType) }}
-        </template>
-        <template v-else-if="column.dataIndex === 'priority'">
-          <a-tag v-if="record.priority === 99" color="gold">精选</a-tag>
-          <span v-else>{{ record.priority || 0 }}</span>
-        </template>
-        <template v-else-if="column.dataIndex === 'deployedTime'">
-          <span v-if="record.deployedTime">
-            {{ formatTime(record.deployedTime) }}
-          </span>
-          <span v-else class="text-gray">未部署</span>
-        </template>
-        <template v-else-if="column.dataIndex === 'deployStatus'">
-          <a-tag v-if="!record.deployKey">未部署</a-tag>
-          <a-tag v-else-if="record.deployStatus === 'online'" color="success">已上线</a-tag>
-          <a-tag v-else>已下线</a-tag>
-        </template>
-        <template v-else-if="column.dataIndex === 'genStatus'">
-          <a-tag v-if="record.genStatus === 'generating'" color="processing">生成中</a-tag>
-          <a-tag v-else-if="record.genStatus === 'succeeded'" color="success">生成成功</a-tag>
-          <a-tag v-else-if="record.genStatus === 'failed'" color="error">生成失败</a-tag>
-          <a-tag v-else>未开始</a-tag>
-        </template>
-        <template v-else-if="column.dataIndex === 'visibility'">
-          <a-tag v-if="record.visibility === 'private'" color="orange">私有</a-tag>
-          <a-tag v-else color="green">公开</a-tag>
-        </template>
-        <template v-else-if="column.dataIndex === 'createTime'">
-          {{ formatTime(record.createTime) }}
-        </template>
-        <template v-else-if="column.dataIndex === 'user'">
-          <UserInfo :user="record.user" size="small" />
-        </template>
-        <template v-else-if="column.key === 'action'">
-          <a-space>
-            <a-button type="default" size="small" @click="viewAppDetail(record)"> 详情 </a-button>
-            <a-button type="primary" size="small" @click="editApp(record)"> 编辑 </a-button>
-            <a-button
-              type="default"
-              size="small"
-              @click="toggleFeatured(record)"
-              :class="{ 'featured-btn': record.priority === 99 }"
+            <a-select-option :value="undefined">全部</a-select-option>
+            <a-select-option
+              v-for="option in CODE_GEN_TYPE_OPTIONS"
+              :key="option.value"
+              :value="option.value"
             >
-              {{ record.priority === 99 ? '取消精选' : '精选' }}
-            </a-button>
-            <a-popconfirm title="确定要删除这个应用吗？" @confirm="deleteApp(record.id)">
-              <a-button danger size="small">删除</a-button>
-            </a-popconfirm>
-          </a-space>
+              {{ option.label }}
+            </a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="部署状态">
+          <a-select
+            v-model:value="searchParams.deployStatus"
+            placeholder="全部"
+            style="width: 130px"
+            allow-clear
+          >
+            <a-select-option :value="undefined">全部</a-select-option>
+            <a-select-option value="online">已上线</a-select-option>
+            <a-select-option value="offline">已下线</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="生成状态">
+          <a-select
+            v-model:value="searchParams.genStatus"
+            placeholder="全部"
+            style="width: 130px"
+            allow-clear
+          >
+            <a-select-option :value="undefined">全部</a-select-option>
+            <a-select-option value="not_start">未开始</a-select-option>
+            <a-select-option value="generating">生成中</a-select-option>
+            <a-select-option value="succeeded">生成成功</a-select-option>
+            <a-select-option value="failed">生成失败</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="可见范围">
+          <a-select
+            v-model:value="searchParams.visibility"
+            placeholder="全部"
+            style="width: 120px"
+            allow-clear
+          >
+            <a-select-option :value="undefined">全部</a-select-option>
+            <a-select-option value="public">公开</a-select-option>
+            <a-select-option value="private">私有</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item label="标签">
+          <a-input v-model:value="searchParams.tagName" placeholder="输入标签筛选" />
+        </a-form-item>
+        <a-form-item>
+          <a-button type="primary" html-type="submit">搜索</a-button>
+        </a-form-item>
+      </a-form>
+      <a-divider />
+
+      <!-- 表格 -->
+      <a-table
+        :columns="columns"
+        :data-source="data"
+        :pagination="pagination"
+        @change="doTableChange"
+        :scroll="{ x: 1600 }"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'cover'">
+            <a-image v-if="record.cover" :src="record.cover" :width="80" :height="60" />
+            <div v-else class="no-cover">无封面</div>
+          </template>
+          <template v-else-if="column.dataIndex === 'initPrompt'">
+            <a-tooltip :title="record.initPrompt">
+              <div class="prompt-text">{{ record.initPrompt }}</div>
+            </a-tooltip>
+          </template>
+          <template v-else-if="column.dataIndex === 'codeGenType'">
+            {{ formatCodeGenType(record.codeGenType) }}
+          </template>
+          <template v-else-if="column.dataIndex === 'priority'">
+            <a-tag v-if="record.priority === 99" color="gold">精选</a-tag>
+            <span v-else>{{ record.priority || 0 }}</span>
+          </template>
+          <template v-else-if="column.dataIndex === 'deployedTime'">
+            <span v-if="record.deployedTime">
+              {{ formatTime(record.deployedTime) }}
+            </span>
+            <span v-else class="text-gray">未部署</span>
+          </template>
+          <template v-else-if="column.dataIndex === 'deployStatus'">
+            <a-tag v-if="!record.deployKey">未部署</a-tag>
+            <a-tag v-else-if="record.deployStatus === 'online'" color="success">已上线</a-tag>
+            <a-tag v-else>已下线</a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'genStatus'">
+            <a-tag v-if="record.genStatus === 'generating'" color="processing">生成中</a-tag>
+            <a-tag v-else-if="record.genStatus === 'succeeded'" color="success">生成成功</a-tag>
+            <a-tag v-else-if="record.genStatus === 'failed'" color="error">生成失败</a-tag>
+            <a-tag v-else>未开始</a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'visibility'">
+            <a-tag v-if="record.visibility === 'private'" color="orange">私有</a-tag>
+            <a-tag v-else color="green">公开</a-tag>
+          </template>
+          <template v-else-if="column.dataIndex === 'createTime'">
+            {{ formatTime(record.createTime) }}
+          </template>
+          <template v-else-if="column.dataIndex === 'user'">
+            <UserInfo :user="record.user" size="small" />
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <a-space>
+              <a-button type="default" size="small" @click="viewAppDetail(record)"> 详情 </a-button>
+              <a-button type="primary" size="small" @click="editApp(record)"> 编辑 </a-button>
+              <a-button
+                type="default"
+                size="small"
+                @click="toggleFeatured(record)"
+                :class="{ 'featured-btn': record.priority === 99 }"
+              >
+                {{ record.priority === 99 ? '取消精选' : '精选' }}
+              </a-button>
+              <a-popconfirm title="确定要删除这个应用吗？" @confirm="deleteApp(record.id)">
+                <a-button danger size="small">删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
         </template>
-      </template>
-    </a-table>
+      </a-table>
+    </div>
 
     <!-- 应用详情弹窗（管理员视角，走 /app/admin/get/vo） -->
     <AppDetailModal
@@ -385,25 +388,15 @@ const deleteApp = async (id: number | undefined) => {
 </script>
 
 <style scoped>
-#appManagePage {
-  padding: 24px;
-  margin-top: 16px;
-  border: 1px solid var(--line-soft);
-  border-radius: 16px;
-  background: rgba(13, 20, 42, 0.55);
-  backdrop-filter: blur(12px);
-}
-
 .no-cover {
+  display: grid;
   width: 80px;
-  height: 60px;
-  background: rgba(255, 255, 255, 0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #8c9abc;
+  height: 56px;
+  place-items: center;
+  border-radius: 8px;
+  background: #edf2f7;
+  color: var(--text-faint);
   font-size: 12px;
-  border-radius: 4px;
 }
 
 .prompt-text {
@@ -412,22 +405,18 @@ const deleteApp = async (id: number | undefined) => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
 .text-gray {
-  color: #8c9abc;
+  color: var(--text-faint);
 }
-
 .featured-btn {
-  background: #faad14;
-  border-color: #faad14;
-  color: white;
+  border-color: #e4cf9d;
+  background: #f9efda;
+  color: var(--warning);
 }
-
 .featured-btn:hover {
-  background: #d48806;
-  border-color: #d48806;
+  border-color: var(--warning);
+  color: var(--warning);
 }
-
 :deep(.ant-table-tbody > tr > td) {
   vertical-align: middle;
 }

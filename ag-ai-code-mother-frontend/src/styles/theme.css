@@ -1,214 +1,229 @@
-/* ============================================================
-   全局主题：深空极光（对齐 cz-ai-agent 视觉体系）
-   ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono&family=Noto+Sans+SC:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
-
 :root {
-  --ink: #04060f;
-  --panel: rgba(16, 23, 48, 0.72);
-  --panel-strong: rgba(13, 19, 42, 0.9);
-  --line: rgba(168, 186, 235, 0.22);
-  --line-soft: rgba(168, 186, 235, 0.14);
-  --text: #edf1ff;
-  --text-dim: #aab5d3;
-  --text-faint: #7181ac;
-  --accent: #8f9dff;
-  --accent-2: #6d7cff;
-  --accent-3: #b06ee0;
-  --teal: #33d9b2;
-  --gold: #f4d03f;
-  --grad: linear-gradient(135deg, #9d8bff, #6d7cff 52%, #b06ee0);
-  --grad-btn: linear-gradient(135deg, #8ea2ff, #6d7cff 48%, #a55fe0);
+  color-scheme: light;
+  --text: #202631;
+  --text-dim: #4b5565;
+  --text-faint: #5f6a7a;
+  --accent: #2459cf;
+  --accent-hover: #1948b3;
+  --accent-soft: #e9f0ff;
+  --success: #20704e;
+  --danger: #b42333;
+  --warning: #895605;
+  --line: #d5dce6;
+  --line-soft: rgba(59, 75, 99, 0.13);
+  --surface: #f8fafd;
+  --surface-solid: #fff;
+  --glass-edge: rgba(255, 255, 255, 0.94);
+  --glass-shadow: 0 18px 46px -32px rgba(40, 55, 79, 0.4);
+  --glass-fill: linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(250, 252, 255, 0.55));
+  --workspace-width: min(1280px, calc(100% - 64px));
+  --radius-panel: 28px;
+  --radius-control: 12px;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei',
+    'Noto Sans CJK SC', sans-serif;
+  --font-mono: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+  --ease-out: cubic-bezier(0.22, 0.8, 0.22, 1);
 }
 
 body {
-  background: var(--ink);
-  color: var(--text);
-  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  margin: 0;
+  min-width: 0;
   min-height: 100vh;
+  color: var(--text);
+  font-family: var(--font-sans);
+  background-color: #edf0f5;
+  background-image:
+    radial-gradient(ellipse at 22% 2%, #fff 0%, transparent 53%),
+    radial-gradient(ellipse at 96% 12%, #dbe1ea 0%, transparent 47%),
+    linear-gradient(155deg, #eef1f5 15%, #e7ebf1 55%, #f7f8fa 100%);
+  background-attachment: fixed;
 }
 
-/* ================= 全局深空装饰层 =================
-   说明：装饰层样式保留备用；当前由 BackgroundSwitcher 的四套动态背景
-   （图片 Ken Burns / 视频）作为全站视觉主角，参考项目最终同样隐藏了装饰层。 */
-.cosmic-decor {
+body::before {
   position: fixed;
   inset: 0;
-  z-index: 0;
+  background:
+    radial-gradient(
+      ellipse 56vw 65vh at 83% 0%,
+      transparent 99%,
+      #ffffffb0 99.3%,
+      transparent 99.65%
+    ),
+    radial-gradient(
+      ellipse 70vw 79vh at 12% 105%,
+      transparent 99%,
+      #ffffff8c 99.25%,
+      transparent 99.55%
+    );
   pointer-events: none;
-}
-.cosmic-stars {
-  position: absolute;
-  inset: 0;
-  background-image:
-    radial-gradient(#c8d6ff 1px, transparent 1px),
-    radial-gradient(#fff 1px, transparent 1px),
-    radial-gradient(ellipse at 20% 85%, rgba(52, 100, 202, 0.36) 0, transparent 40%);
-  background-size: 83px 83px, 137px 137px, auto;
-  background-position: 13px 27px, 49px 8px, 0 0;
-  -webkit-mask-image: linear-gradient(#000, transparent 95%);
-  mask-image: linear-gradient(#000, transparent 95%);
-}
-.cosmic-stars i {
-  position: absolute;
-  width: 3px;
-  height: 3px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 10px #dce7ff;
-  animation: twinkle 4s ease-in-out infinite;
-}
-.cosmic-stars i:nth-child(3n) { opacity: 0.4; }
-.cosmic-stars i:nth-child(2n) { left: 75%; }
-.cosmic-stars i:nth-child(3n + 1) { left: 42%; top: 34%; }
-.cosmic-stars i:nth-child(5n) { left: 18%; top: 58%; }
-.cosmic-stars i:nth-child(7n) { left: 88%; top: 18%; }
-.cosmic-stars i:nth-child(4n) { top: 72%; }
-@keyframes twinkle {
-  50% { opacity: 0.25; transform: scale(0.5); }
-}
-.cosmic-aurora {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-}
-.aurora {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.55;
-  will-change: transform;
-}
-.aurora-a {
-  width: 640px;
-  height: 460px;
-  left: -12%;
-  top: -16%;
-  background: radial-gradient(circle, rgba(86, 104, 255, 0.55), rgba(46, 31, 122, 0.18) 58%, transparent 74%);
-  animation: aurora-drift-a 17s ease-in-out infinite alternate;
-}
-.aurora-b {
-  width: 560px;
-  height: 420px;
-  right: -10%;
-  top: 22%;
-  background: radial-gradient(circle, rgba(176, 110, 224, 0.42), rgba(98, 44, 166, 0.14) 60%, transparent 76%);
-  animation: aurora-drift-b 21s ease-in-out infinite alternate;
-}
-.aurora-c {
-  width: 520px;
-  height: 380px;
-  left: 22%;
-  bottom: -22%;
-  background: radial-gradient(circle, rgba(51, 217, 178, 0.26), rgba(19, 128, 118, 0.1) 58%, transparent 76%);
-  animation: aurora-drift-c 19s ease-in-out infinite alternate;
-}
-@keyframes aurora-drift-a {
-  from { transform: translate3d(0, 0, 0) scale(1); }
-  to { transform: translate3d(90px, 60px, 0) scale(1.16); }
-}
-@keyframes aurora-drift-b {
-  from { transform: translate3d(0, 0, 0) scale(1.08); }
-  to { transform: translate3d(-80px, -50px, 0) scale(0.94); }
-}
-@keyframes aurora-drift-c {
-  from { transform: translate3d(0, 0, 0) scale(0.94); }
-  to { transform: translate3d(70px, -60px, 0) scale(1.14); }
-}
-.cosmic-grid {
-  position: absolute;
-  inset: 0;
-  background-image:
-    repeating-linear-gradient(115deg, rgba(158, 178, 255, 0.055) 0 1px, transparent 1px 68px),
-    repeating-linear-gradient(25deg, rgba(158, 178, 255, 0.04) 0 1px, transparent 1px 68px);
-  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 78%);
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 78%);
+  content: '';
 }
 
-/* ================= 通用元素 ================= */
-.eyebrow {
-  margin: 0 0 20px;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  color: #c0adff;
-  font: 10px 'DM Mono', monospace;
-  letter-spacing: 0.12em;
+#app {
+  position: relative;
 }
-.eyebrow::before {
-  content: '';
-  width: 26px;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, #c0adff);
+
+:where(h1, h2, h3, p) {
+  margin: 0;
+}
+
+:is(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .glass-panel {
-  border: 1px solid rgba(168, 186, 235, 0.22);
-  border-radius: 16px;
-  background: rgba(15, 23, 48, 0.06);
-  backdrop-filter: blur(10px);
+  min-width: 0;
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-panel);
+  background: var(--surface);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 1px 0 #fff;
 }
 
-/* ================= 入场显现动画 ================= */
-@keyframes reveal-up {
-  from {
-    opacity: 0;
-    transform: translateY(26px);
-    filter: blur(5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-.reveal {
-  animation: reveal-up 1s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
-  animation-delay: var(--rd, 0ms);
-  will-change: opacity, transform, filter;
-}
-@media (prefers-reduced-motion: reduce) {
-  .reveal {
-    animation: none;
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-panel {
+    background: var(--glass-fill);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
   }
 }
 
-/* ================= Ant Design 深色适配补充 ================= */
-/* 菜单与头部融入深空背景 */
-.ant-layout-header {
-  background: transparent !important;
-  border-bottom: 1px solid rgba(157, 173, 222, 0.14);
-  backdrop-filter: blur(10px);
+.workspace-page {
+  width: var(--workspace-width);
+  margin-inline: auto;
 }
-.basic-layout .ant-menu {
-  background: transparent !important;
-  border-bottom: 0 !important;
+
+.page-heading {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 26px;
 }
-.ant-layout-footer {
-  background: transparent !important;
-}
-/* 表格实底深色，避免半透明叠加背景图导致数据看不清 */
-.ant-table {
-  background: #0e1630 !important;
+
+.page-heading h1 {
+  margin: 0;
   color: var(--text);
+  font-size: clamp(30px, 4vw, 46px);
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.14;
 }
-.ant-table-thead > tr > th {
-  background: #141d3d !important;
-  color: #cdd8f5 !important;
-  font-weight: 600;
-  border-bottom: 1px solid var(--line) !important;
+
+.page-heading p {
+  color: var(--text-dim);
 }
-.ant-table-tbody > tr > td {
-  border-bottom: 1px solid var(--line-soft) !important;
+
+.admin-page {
+  padding-block: clamp(32px, 6vw, 64px) 16px;
 }
-.ant-table-tbody > tr:nth-child(even) > td {
-  background: rgba(18, 28, 60, 0.55) !important;
+.admin-panel {
+  padding: clamp(16px, 3vw, 30px);
 }
-.ant-table-tbody > tr:hover > td {
-  background: rgba(143, 157, 255, 0.1) !important;
+.admin-panel > .ant-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
 }
-.ant-card {
-  border: 1px solid var(--line-soft) !important;
-  background: rgba(14, 22, 48, 0.5) !important;
-  backdrop-filter: blur(10px);
+.admin-panel > .ant-form > .ant-form-item {
+  margin: 0;
+}
+.admin-panel > .ant-table-wrapper {
+  margin-top: 20px;
+  min-width: 0;
+}
+.admin-panel .ant-table {
+  background: transparent;
+}
+.admin-panel .ant-table-thead > tr > th {
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: fixed;
+  z-index: 1100;
+  top: 12px;
+  left: 12px;
+  padding: 10px 16px;
+  border-radius: var(--radius-control);
+  background: var(--surface-solid);
+  transform: translateY(calc(-100% - 14px));
+}
+
+.skip-link:focus {
+  transform: none;
+}
+
+.ant-modal .ant-modal-content,
+.ant-drawer .ant-drawer-content {
+  border: 1px solid var(--glass-edge);
+  background: var(--surface);
+  box-shadow: 0 24px 70px -28px rgba(40, 55, 79, 0.36);
+}
+
+.ant-modal .ant-modal-content {
+  border-radius: 22px;
+}
+
+.ant-modal .ant-modal-header {
+  background: transparent;
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .ant-modal .ant-modal-content,
+  .ant-drawer .ant-drawer-content {
+    background: rgba(249, 251, 254, 0.92);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+  }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --workspace-width: calc(100% - 28px);
+    --radius-panel: 22px;
+  }
+  body {
+    background-attachment: scroll;
+  }
+  .admin-panel > .ant-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .admin-panel > .ant-form > .ant-form-item {
+    max-width: 100%;
+  }
+  .admin-panel > .ant-form > .ant-form-item:last-child {
+    grid-column: 1 / -1;
+  }
+  .admin-panel .ant-form-item-label {
+    flex: 0 0 100%;
+    text-align: start;
+  }
+  .admin-panel .ant-form-item-control {
+    min-width: 0;
+  }
+  .admin-panel .ant-form-item .ant-select {
+    width: 100% !important;
+  }
+  .admin-panel .ant-table-cell-fix-left,
+  .admin-panel .ant-table-cell-fix-right {
+    position: static !important;
+  }
+  .admin-panel :is(.ant-table-cell-fix-left-last, .ant-table-cell-fix-right-first)::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

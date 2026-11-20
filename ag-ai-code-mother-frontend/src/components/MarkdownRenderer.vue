@@ -7,8 +7,7 @@ import { computed } from 'vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 
-// 引入代码高亮样式（深色主题，匹配全站深空配色）
-import 'highlight.js/styles/github-dark.css'
+import 'highlight.js/styles/github.css'
 
 interface Props {
   content: string
@@ -65,13 +64,13 @@ const renderedMarkdown = computed(() => {
 
 .markdown-content :deep(h1) {
   font-size: 1.5em;
-  border-bottom: 1px solid rgba(168, 186, 235, 0.2);
+  border-bottom: 1px solid var(--line);
   padding-bottom: 0.3em;
 }
 
 .markdown-content :deep(h2) {
   font-size: 1.3em;
-  border-bottom: 1px solid rgba(168, 186, 235, 0.2);
+  border-bottom: 1px solid var(--line);
   padding-bottom: 0.3em;
 }
 
@@ -82,6 +81,9 @@ const renderedMarkdown = computed(() => {
 .markdown-content :deep(p) {
   margin: 0.8em 0;
 }
+
+.markdown-content :deep(p:first-child) { margin-top: 0; }
+.markdown-content :deep(p:last-child) { margin-bottom: 0; }
 
 .markdown-content :deep(ul),
 .markdown-content :deep(ol) {
@@ -96,23 +98,23 @@ const renderedMarkdown = computed(() => {
 .markdown-content :deep(blockquote) {
   margin: 1em 0;
   padding: 0.5em 1em;
-  border-left: 4px solid rgba(140, 166, 232, 0.45);
-  background-color: rgba(9, 17, 39, 0.4);
-  color: #aab5d3;
+  border-left: 4px solid #a2afc1;
+  background-color: #f0f3f8;
+  color: var(--text-dim);
 }
 
 .markdown-content :deep(code) {
-  background-color: rgba(9, 17, 39, 0.5);
-  color: #c3a6ff;
+  background-color: #edf1f6;
+  color: #3e506c;
   padding: 0.2em 0.4em;
   border-radius: 3px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
 }
 
 .markdown-content :deep(pre) {
-  background-color: #0d1526;
-  border: 1px solid rgba(157, 173, 222, 0.2);
+  background-color: #f6f8fb;
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 1em;
   overflow-x: auto;
@@ -121,6 +123,7 @@ const renderedMarkdown = computed(() => {
 
 .markdown-content :deep(pre code) {
   background-color: transparent;
+  color: inherit;
   padding: 0;
   border-radius: 0;
   font-size: 0.9em;
@@ -135,22 +138,22 @@ const renderedMarkdown = computed(() => {
 
 .markdown-content :deep(table th),
 .markdown-content :deep(table td) {
-  border: 1px solid rgba(157, 173, 222, 0.2);
+  border: 1px solid var(--line);
   padding: 0.5em 0.8em;
   text-align: left;
 }
 
 .markdown-content :deep(table th) {
-  background-color: rgba(30, 45, 85, 0.6);
+  background-color: #edf1f6;
   font-weight: 600;
 }
 
 .markdown-content :deep(table tr:nth-child(even)) {
-  background-color: rgba(20, 30, 60, 0.4);
+  background-color: #f6f8fb;
 }
 
 .markdown-content :deep(a) {
-  color: #8f9dff;
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -167,15 +170,15 @@ const renderedMarkdown = computed(() => {
 
 .markdown-content :deep(hr) {
   border: none;
-  border-top: 1px solid rgba(168, 186, 235, 0.2);
+  border-top: 1px solid var(--line);
   margin: 1.5em 0;
 }
 
 /* 代码高亮样式优化 */
 .markdown-content :deep(.hljs) {
-  background-color: #0d1526 !important;
+  background-color: #f6f8fb !important;
   border-radius: 6px;
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
   line-height: 1.4;
 }

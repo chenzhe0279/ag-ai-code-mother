@@ -11,6 +11,20 @@ import UserProfilePage from '@/pages/user/UserProfilePage.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) return savedPosition
+    if (to.hash) {
+      const section = document.getElementById(to.hash.slice(1))
+      if (!section) return { top: 0 }
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      return {
+        el: section,
+        top: Number.parseFloat(getComputedStyle(section).scrollMarginTop) || 0,
+        behavior: from.path === to.path && !reducedMotion ? 'smooth' : 'auto',
+      }
+    }
+    return { top: 0 }
+  },
   routes: [
     {
       path: '/',

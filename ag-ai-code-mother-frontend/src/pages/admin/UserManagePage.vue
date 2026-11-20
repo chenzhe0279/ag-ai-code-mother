@@ -1,69 +1,73 @@
 <template>
-  <div id="userManagePage">
-    <!-- 搜索表单 -->
-    <a-form layout="inline" :model="searchParams" @finish="doSearch">
-      <a-form-item label="账号">
-        <a-input v-model:value="searchParams.userAccount" placeholder="输入账号" />
-      </a-form-item>
-      <a-form-item label="用户名">
-        <a-input v-model:value="searchParams.userName" placeholder="输入用户名" />
-      </a-form-item>
-      <a-form-item label="角色">
-        <a-select
-          v-model:value="searchParams.userRole"
-          placeholder="全部"
-          style="width: 130px"
-          allow-clear
-        >
-          <a-select-option :value="undefined">全部</a-select-option>
-          <a-select-option value="user">普通用户</a-select-option>
-          <a-select-option value="admin">管理员</a-select-option>
-        </a-select>
-      </a-form-item>
-      <a-form-item>
-        <a-button type="primary" html-type="submit">搜索</a-button>
-      </a-form-item>
-    </a-form>
-    <a-divider />
-    <div class="table-toolbar">
-      <a-button type="primary" @click="openAddModal">新增用户</a-button>
+  <div id="userManagePage" class="admin-page workspace-page">
+    <header class="page-heading"><h1>用户管理</h1></header>
+    <div class="admin-panel glass-panel">
+      <!-- 搜索表单 -->
+      <a-form layout="inline" :model="searchParams" @finish="doSearch">
+        <a-form-item label="账号">
+          <a-input v-model:value="searchParams.userAccount" placeholder="输入账号" />
+        </a-form-item>
+        <a-form-item label="用户名">
+          <a-input v-model:value="searchParams.userName" placeholder="输入用户名" />
+        </a-form-item>
+        <a-form-item label="角色">
+          <a-select
+            v-model:value="searchParams.userRole"
+            placeholder="全部"
+            style="width: 130px"
+            allow-clear
+          >
+            <a-select-option :value="undefined">全部</a-select-option>
+            <a-select-option value="user">普通用户</a-select-option>
+            <a-select-option value="admin">管理员</a-select-option>
+          </a-select>
+        </a-form-item>
+        <a-form-item>
+          <a-button type="primary" html-type="submit">搜索</a-button>
+        </a-form-item>
+      </a-form>
+      <a-divider />
+      <div class="table-toolbar">
+        <a-button type="primary" @click="openAddModal">新增用户</a-button>
+      </div>
+      <!-- 表格 -->
+      <a-table
+        :columns="columns"
+        :data-source="data"
+        :pagination="pagination"
+        :scroll="{ x: 960 }"
+        @change="doTableChange"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.dataIndex === 'userAvatar'">
+            <a-image :src="resolveAvatarUrl(record.userAvatar)" :width="120" />
+          </template>
+          <template v-else-if="column.dataIndex === 'userRole'">
+            <div v-if="record.userRole === 'admin'">
+              <a-tag color="green">管理员</a-tag>
+            </div>
+            <div v-else>
+              <a-tag color="blue">普通用户</a-tag>
+            </div>
+          </template>
+          <template v-else-if="column.dataIndex === 'isVip'">
+            <a-tag v-if="record.isVip" color="gold">VIP</a-tag>
+            <span v-else class="text-gray">-</span>
+          </template>
+          <template v-else-if="column.dataIndex === 'createTime'">
+            {{ dayjs(record.createTime).format('YYYY-MM-DD HH:mm:ss') }}
+          </template>
+          <template v-else-if="column.key === 'action'">
+            <a-space>
+              <a-button type="primary" size="small" @click="openEditModal(record)">编辑</a-button>
+              <a-popconfirm title="确定要删除这个用户吗？" @confirm="doDelete(record.id)">
+                <a-button danger size="small">删除</a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
     </div>
-    <!-- 表格 -->
-    <a-table
-      :columns="columns"
-      :data-source="data"
-      :pagination="pagination"
-      @change="doTableChange"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.dataIndex === 'userAvatar'">
-          <a-image :src="resolveAvatarUrl(record.userAvatar)" :width="120" />
-        </template>
-        <template v-else-if="column.dataIndex === 'userRole'">
-          <div v-if="record.userRole === 'admin'">
-            <a-tag color="green">管理员</a-tag>
-          </div>
-          <div v-else>
-            <a-tag color="blue">普通用户</a-tag>
-          </div>
-        </template>
-        <template v-else-if="column.dataIndex === 'isVip'">
-          <a-tag v-if="record.isVip" color="gold">VIP</a-tag>
-          <span v-else class="text-gray">-</span>
-        </template>
-        <template v-else-if="column.dataIndex === 'createTime'">
-          {{ dayjs(record.createTime).format('YYYY-MM-DD HH:mm:ss') }}
-        </template>
-        <template v-else-if="column.key === 'action'">
-          <a-space>
-            <a-button type="primary" size="small" @click="openEditModal(record)">编辑</a-button>
-            <a-popconfirm title="确定要删除这个用户吗？" @confirm="doDelete(record.id)">
-              <a-button danger size="small">删除</a-button>
-            </a-popconfirm>
-          </a-space>
-        </template>
-      </template>
-    </a-table>
 
     <!-- 新增 / 编辑用户弹窗 -->
     <a-modal
@@ -321,24 +325,13 @@ onMounted(() => {
 </script>
 
 <style scoped>
-#userManagePage {
-  padding: 24px;
-  margin-top: 16px;
-  border: 1px solid var(--line-soft);
-  border-radius: 16px;
-  background: rgba(13, 20, 42, 0.55);
-  backdrop-filter: blur(12px);
-}
-
 .table-toolbar {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
-
 .modal-tip {
   margin-bottom: 16px;
 }
-
 .text-gray {
-  color: #8c9abc;
+  color: var(--text-faint);
 }
 </style>
